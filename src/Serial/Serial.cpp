@@ -49,6 +49,7 @@ namespace SerialAPI
     {
         sys_id = _sys_id;
         SerialInterface.begin(baudrate);
+        SerialInterface.setTimeout(10);
         SerialInterface.setBufferSize(MAX_PACKET_SIZE, MAX_PACKET_SIZE);
     }
 
@@ -176,8 +177,9 @@ namespace SerialAPI
 
         // copy the output data to the out buffer
         memcpy(buff, data_buffer + DATA_SEGMENT_OFFSET, payload_length);
+        const uint8_t packet_id = data_buffer[FRAMEID_SEGMENT_OFFSET];
         reset_buffer();
-        return data_buffer[FRAMEID_SEGMENT_OFFSET];
+        return packet_id;
     }
 
     bool send_bytes(uint8_t packet_id, const void* buff, size_t len)
@@ -194,7 +196,7 @@ namespace SerialAPI
         output_buffer[1] = packet_id;
         output_buffer[2] = len;
         memcpy(output_buffer + DATA_SEGMENT_OFFSET, buff, len);
-        output_buffer[packet_size - 1] = crc8ccitt(buff, len);
+        output_buffer[packet_size - 1] = crc8ccitt(output_buffer + DATA_SEGMENT_OFFSET, len);
 
         SerialInterface.write(output_buffer, packet_size);
         return true;

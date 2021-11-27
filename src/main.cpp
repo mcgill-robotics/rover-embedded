@@ -12,7 +12,12 @@ void loop()
     {}
 
     {
-        float speed = 0.5f;
+        static float speed = 0.f;
+        speed += 0.01f;
+        if (speed > 1.f)
+        {
+            speed = -1.f;
+        }
         SerialAPI::send_bytes('d', &speed, sizeof(speed));
     }
 
