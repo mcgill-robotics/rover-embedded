@@ -15,10 +15,11 @@
 typedef enum ReadState
 {
     RS_WAITING,
-    RS_READING
+    RS_READING,
+    RS_PACKET_READY,
 } ReadState;
 // Controls which serial interface the device should use.
-static HardwareSerial& SerialInterface = Serial;
+static HardwareSerial& SerialInterface = Serial1;
 
 static uint8_t sys_id = 0;
 
@@ -35,8 +36,6 @@ static ReadState read_state = RS_WAITING;
 #define FRAMEID_SEGMENT_OFFSET 1
 #define FRAME_LENGTH_SEGMENT_OFFSET 2
 #define DATA_SEGMENT_OFFSET 3
-
-static bool packet_ready = false;
 
 static bool crc_validate_packet(void* data, size_t len, uint8_t checksum)
 {
@@ -94,7 +93,7 @@ namespace SerialAPI
             {
                 memset(data_buffer, 0, MAX_PACKET_SIZE);
                 data_offset = 0;
-                packet_ready = false;
+                read_state = RS_PACKET_READY;
                 return false;
             }
 
@@ -108,10 +107,10 @@ namespace SerialAPI
             // thus the last character we read will always be the EOP if the packet is finished.
             if (data_offset >= payload_length + 4)
             {
-                packet_ready = true;
+                read_state = RS_PACKET_READY;
             }
         }
-        return packet_ready;
+        return read_state == RS_PACKET_READY;
     }
     
     static void send_retransmit(void)
@@ -143,12 +142,12 @@ namespace SerialAPI
         memset(data_buffer, 0, MAX_PACKET_SIZE);
         data_offset = 0;
         payload_length = 0;
-        packet_ready = false;
+        read_state = RS_WAITING;
     }
 
     uint8_t read_data(void* buff, uint32_t max_length)
     {
-        if (packet_ready == false)
+        if (read_state == RS_PACKET_READY)
         {
             return -1;
         }
@@ -163,8 +162,8 @@ namespace SerialAPI
         if (crc_validate_packet(data_buffer + DATA_SEGMENT_OFFSET, DATA_SEGMENT_LENGTH(packet_length), data_buffer[packet_length - 2]) == false)
         {
             send_retransmit();
-            //reset_buffer();
-            //return -1;
+            reset_buffer();
+            return -1;
         }
 
         // By now the packet is valid so we should reply with an ack
@@ -178,24 +177,21 @@ namespace SerialAPI
 
     bool send_bytes(uint8_t packet_id, const void* buff, size_t len)
     {
-        const size_t packet_size = len + 5;
+        const size_t packet_size = len + 4;
 
         if (packet_size >= MAX_PACKET_SIZE)
         {
             return false;
         }
 
-        char output_buffer[MAX_PACKET_SIZE];
+        uint8_t output_buffer[MAX_PACKET_SIZE];
         output_buffer[0] = START_OF_PACKET;
         output_buffer[1] = packet_id;
         output_buffer[2] = len;
         memcpy(output_buffer + DATA_SEGMENT_OFFSET, buff, len);
         output_buffer[packet_size - 1] = crc8ccitt(buff, len);
 
-        // Must be null terminated for Serial.write to process it correctly.
-        output_buffer[packet_size] = 0;
-
-        SerialInterface.write(output_buffer);
+        SerialInterface.write(output_buffer, packet_size);
         return true;
     }
 }
