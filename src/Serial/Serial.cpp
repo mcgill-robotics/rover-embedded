@@ -98,7 +98,6 @@ namespace SerialAPI
             {
                 memset(data_buffer, 0, MAX_PACKET_SIZE);
                 data_offset = 0;
-                read_state = RS_PACKET_READY;
                 return false;
             }
 
