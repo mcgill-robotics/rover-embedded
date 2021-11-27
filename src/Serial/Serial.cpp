@@ -152,7 +152,7 @@ namespace SerialAPI
 
     uint8_t read_data(void* buff, uint32_t max_length)
     {
-        if (read_state == RS_PACKET_READY)
+        if (read_state != RS_PACKET_READY)
         {
             return -1;
         }
