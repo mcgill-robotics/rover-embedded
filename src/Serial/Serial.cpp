@@ -75,18 +75,23 @@ namespace SerialAPI
             if (read_state == RS_WAITING)
             {
                 size_t start_offset = 0;
+                bool found_start = false;
                 for (size_t i = 0; i < data_offset; ++i)
                 {
                     if (data_buffer[i] == START_OF_PACKET)
                     {
                         start_offset = i;
+                        found_start = true;
                         break;
                     }
                 }
-                read_state = RS_READING;
-                // Shift the array over so that it starts at the correct start packet
-                memmove(data_buffer + start_offset, data_buffer, MAX_PACKET_SIZE - start_offset);
-                data_offset = 0;
+                if (found_start)
+                {
+                    read_state = RS_READING;
+                    // Shift the array over so that it starts at the correct start packet
+                    memmove(data_buffer + start_offset, data_buffer, MAX_PACKET_SIZE - start_offset);
+                    data_offset = 0;
+                }
             }
 
             if (read_state == RS_WAITING)
