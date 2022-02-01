@@ -18,8 +18,14 @@ typedef enum ReadState
     RS_READING,
     RS_PACKET_READY,
 } ReadState;
+
 // Controls which serial interface the device should use.
+#ifdef UNO
+// Uno only has one hardware serial interface
+static HardwareSerial& SerialInterface = Serial;
+#else
 static HardwareSerial& SerialInterface = Serial1;
+#endif
 
 static uint8_t sys_id = 0;
 
@@ -50,7 +56,11 @@ namespace SerialAPI
         sys_id = _sys_id;
         SerialInterface.begin(baudrate);
         SerialInterface.setTimeout(10);
+
+// Custom buffer size only available on TM4C
+#ifdef TM4C
         SerialInterface.setBufferSize(MAX_PACKET_SIZE, MAX_PACKET_SIZE);
+#endif
     }
 
     bool update(void)
