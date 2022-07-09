@@ -6,7 +6,7 @@
 // TODO: Test this class with the old code, remember to create backup beforehand!
 // I'm very suspicious of the way I handled user defined pointers...
 
-// The motor will not move until begin() is called!
+// The motor will not move until begin() is called. You also need to run setAngleLimits().
 RoverArmMotor::RoverArmMotor(int pwm_pin, int encoder_pin, int esc_type, double minimum_angle, double maximum_angle, int dir_pin)
                 :internalPIDInstance(&input, &output, &setpoint, regularKp, regularKi, regularKd, DIRECT)
                 ,internalAveragerInstance(15){
@@ -17,6 +17,11 @@ RoverArmMotor::RoverArmMotor(int pwm_pin, int encoder_pin, int esc_type, double 
     pwm = pwm_pin;
     dir = dir_pin;
     escType = esc_type;
+
+    // Initialize these two such that it's impossible to respect them. This forces
+    // the main function to also run setAngleLimits(), or else the motor won't move
+    minAngle = -1;
+    maxAngle = -10;
     
 }
 
@@ -62,8 +67,7 @@ void RoverArmMotor::begin(double aggP, double aggI, double aggD, double regP, do
     internalPIDInstance.SetTunings(regularKp, regularKi, regularKd);
 
     //initialize the multiplier bool to false and the multiplier to 1. 
-    wrist_waist = false; 
-    multiplier = 1;
+    gearRatio = 1;
 
 }
 
@@ -83,45 +87,9 @@ void RoverArmMotor::tick(){
         currentAngle = lastAngle;
     }
 
-    // if(currentAngle >= 359.0) currentAngle = 0;
-
-    if(lastAngle >= 359 && currentAngle <= 1){
-        positive_rezeros++;
-    }else if(lastAngle >= 1 && currentAngle >= 359){
-        positive_rezeros--;
-    }
-
-    // Redo this for different gear/belt ratio
-    if(positive_rezeros >= 2){
-        
-    }else if(positive_rezeros <= -2){
-
-    }else if (positive_rezeros == 0){
-        real_angle = currentAngle / 2;
-    }
-
-    if(wrist_waist){
-        int rotations = (int) currentAngle / 360;
-        if(currentAngle >= 359.0) currentAngle = 0;
-        currentAngle += (rotations * 360);
-    }else{
-        if(currentAngle >= 359.0) currentAngle = 0;
-    }
-
-    // Compute distance, retune PID if necessary. Less aggressive tuning params for small errors
-    // Find the shortest from the current position to the set point
     double gap;
 
-    if(wrist_waist){
-        (abs(setpoint-input) < abs((setpoint + 360.0f)-input)) ? gap = setpoint - input : gap = (setpoint + 360.0f) - input; 
-    }else{
-        gap = setpoint - input;
-    }
-
-    //multiply the calculated distance by the value of the required multiplier 
-    //some motors will required multiple rotations to generate the desired output. 
-    //only apply this multiplier if we specify the motor needs it in the constructor.
-    if (wrist_waist) gap*=multiplier;
+    currentAngle /= gearRatio;
 
     if (abs(gap) < 10){
         internalPIDInstance.SetTunings(regularKp, regularKi, regularKd);
@@ -132,29 +100,32 @@ void RoverArmMotor::tick(){
     // Compute the next value
     internalPIDInstance.Compute();
 
-    // Interpret output data based on the ESC type defined in constructor
-    if(escType == CYTRON){
+    // Check maximum and minimum angle limits to make sure the arm isn't breaking shit
+    if(currentAngle <= maxAngle && currentAngle >= minAngle){
 
-        // Interpret sign of the error signal as the direction pin value
-        (gap > 0) ? digitalWrite(dir, LOW) : digitalWrite(dir, HIGH);
+        // Interpret output data based on the ESC type defined in constructor
+        if(escType == CYTRON){
 
-        // Write to PWM pin
-        analogWrite(pwm, output); 
+            // Interpret sign of the error signal as the direction pin value
+            (gap > 0) ? digitalWrite(dir, LOW) : digitalWrite(dir, HIGH);
 
-    }else if(escType == BLUE_ROBOTICS){
-        // This one is more straightforward since we already defined the output range
-        // from 1100us to 1900us
-        internalServoInstance.writeMicroseconds(output);
+            // Write to PWM pin
+            analogWrite(pwm, output); 
+
+        }else if(escType == BLUE_ROBOTICS){
+            // This one is more straightforward since we already defined the output range
+            // from 1100us to 1900us
+            internalServoInstance.writeMicroseconds(output);
+        }
+
     }
 
     lastAngle = currentAngle;
     
 }
 
-bool RoverArmMotor::setMultiplierBool(bool mult, int value){
-    wrist_waist = mult; 
-    multiplier = value; 
-    return true; 
+void RoverArmMotor::setGearRatio(double value){
+    gearRatio = value; 
 }
 
 double RoverArmMotor::getSetpoint(){
@@ -163,6 +134,11 @@ double RoverArmMotor::getSetpoint(){
 
 void RoverArmMotor::newSetpoint(double angl){
     setpoint = angl;
+}
+
+void RoverArmMotor::setAngleLimits(double min, double max){
+    minAngle = min;
+    maxAngle = max;
 }
 
 float RoverArmMotor::getCurrentAngle(){

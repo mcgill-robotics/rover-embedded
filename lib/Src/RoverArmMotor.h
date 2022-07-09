@@ -17,6 +17,8 @@ class RoverArmMotor{
         #define FWD 1
         #define REV -1
 
+        #define SAFETY_MARGIN_ANGLE 5 
+
         RoverArmMotor(int pwm_pin, int encoder_pin, int esc_type, double minimum_angle, 
                       double maximum_angle, int dir_pin);
 
@@ -25,7 +27,7 @@ class RoverArmMotor{
         void setRegularCoefficients(double P, double I, double D);
         void setRetuningGapLimit(int gap);
         void setAngleLimits(double lowest_angle, double highest_angle);
-        bool setMultiplierBool(bool mult, int value); 
+        void setGearRatio(double value); 
         void newSetpoint(double angle);
 
         void setPIDOutputLimits(double lower_end, double upper_end);
@@ -49,20 +51,16 @@ class RoverArmMotor{
         double lowestAngle, highestAngle;
         int escType;
         int adcResult;
-        double currentAngle, lastAngle;
-        bool wrist_waist; 
-        int multiplier;
+        double currentAngle, lastAngle; 
+        double gearRatio;
         double input;
         double output;
         double setpoint;
-        int actuationState;
+        double gap;
 
-        enum ActuationStates
-        {
-            FIRST_ROTATION_REGION,
-            SECOND_ROTATION_REGION,
-            RATIO_IS_ONE
-        };
+        // Initialize these two such that it's impossible to respect them. This forces
+        // the main function to run setAngleLimits(), or else the motor won't move
+        double minAngle, maxAngle;
 
         double mapFloat(float x, float in_min, float in_max, float out_min, float out_max);
 };
