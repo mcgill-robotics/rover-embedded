@@ -66,13 +66,10 @@ void RoverArmMotor::begin(double aggP, double aggI, double aggD, double regP, do
 
     internalPIDInstance.SetTunings(regularKp, regularKi, regularKd);
 
-    //initialize the multiplier bool to false and the multiplier to 1. 
+    //initialize the gear ratio to 1. 
     gearRatio = 1;
 
 }
-
-int positive_rezeros = 0;
-double real_angle = 0;
 
 // Needs to be called in each loop
 void RoverArmMotor::tick(){
@@ -86,8 +83,6 @@ void RoverArmMotor::tick(){
     if(abs(currentAngle - lastAngle) < 1.0){
         currentAngle = lastAngle;
     }
-
-    double gap;
 
     currentAngle /= gearRatio;
 
