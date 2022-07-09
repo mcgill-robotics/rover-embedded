@@ -1,9 +1,10 @@
 #include <Servo.h>
 #include <tm4c123gh6pm.h>
-#include <Rover_SerialAPI.h>
 #include "inc/hw_memmap.h"
 #include "driverlib/gpio.h"
 #include "driverlib/sysctl.h"
+#include <Rover_SerialAPI.h>
+#include <Arduino.h>
 
 /*
  * PINOUT NOTE:
@@ -14,6 +15,9 @@
  * to input already.
  * 
  */
+
+#define CW 1
+#define CCW -1
 
 #define LB_MOTOR_HALL_A PA_2
 #define RB_MOTOR_HALL_A PA_3
@@ -54,34 +58,19 @@
 Servo LBservo, LFservo, RBservo, RFservo;
 #define MAX_ACCEL 5
 
-/**
- * Hall Sensor ISR's, pulse counters and variables
- */
-void LBHallSensorA();
-void LBHallSensorB();
-void LBHallSensorC();
-
-void RBHallSensorA();
-void RBHallSensorB();
-void RBHallSensorC();
-
-void LFHallSensorA();
-void LFHallSensorB();
-void LFHallSensorC();
-
-void RFHallSensorA();
-void RFHallSensorB();
-void RFHallSensorC();
-
 volatile long lf_pulses=0, lb_pulses=0, rb_pulses=0, rf_pulses=0;
 unsigned long integration_period_start=0, integration_period_end=100, time_elapsed=100;
 int lb_regress_value=0, lb_rpm=0, rb_regress_value=0, rb_rpm=0;
 int lf_regress_value=0, lf_rpm=0, rf_regress_value=0, rf_rpm=0;
 float lf_pulses_per_second,lb_pulses_per_second,rf_pulses_per_second,rb_pulses_per_second;
-int lb_target_speed, rb_target_speed, lf_target_speed, rf_target_speed;
+float lb_target_speed, rb_target_speed, lf_target_speed, rf_target_speed;
+volatile int direction;
 int getRPM(long time_elapsed, long pulses);
 
 void setPinAsOpenDrain(char port, int pin, int output);
+void HallSensorA();
+void HallSensorB();
+void HallSensorC();
 
 /**
  * Serial structs and function signatures. Could we make these into a library pls
@@ -112,7 +101,8 @@ static float fbuffer[SERIAL_RX_BUFFER_SIZE];
   (byte & 0x01 ? '1' : '0')
 
 // the setup routine runs once when you press reset:
-void setup() {                
+void setup() {           
+  SerialAPI::init('1', 9600);    
   setPinAsOpenDrain('B', 4, 1);
   setPinAsOpenDrain('B', 5, 1);
   setPinAsOpenDrain('B', 6, 1);
@@ -145,22 +135,10 @@ void setup() {
   RBservo.attach(RB_SERVO_PIN);
   RFservo.attach(RF_SERVO_PIN);
 
-  attachInterrupt(PA_2, LBHallSensorA, GPIO_RISING_EDGE);
-  attachInterrupt(PA_3, RBHallSensorA, GPIO_RISING_EDGE);
-  attachInterrupt(PA_4, LFHallSensorA, GPIO_RISING_EDGE);
-  attachInterrupt(PA_5, RFHallSensorA, GPIO_RISING_EDGE);
-
-  attachInterrupt(PC_4, LBHallSensorB, GPIO_RISING_EDGE);
-  attachInterrupt(PC_5, RBHallSensorB, GPIO_RISING_EDGE);
-  attachInterrupt(PC_6, LFHallSensorB, GPIO_RISING_EDGE);
-  attachInterrupt(PC_7, RFHallSensorB, GPIO_RISING_EDGE);		
-
-  attachInterrupt(PF_1, LBHallSensorC, GPIO_RISING_EDGE);
-  attachInterrupt(PF_2, RBHallSensorC, GPIO_RISING_EDGE);
-  attachInterrupt(PF_3, LFHallSensorC, GPIO_RISING_EDGE);
-  attachInterrupt(PF_4, RFHallSensorC, GPIO_RISING_EDGE);	
+  attachInterrupt(LB_MOTOR_HALL_A, HallSensorA, CHANGE);
+  attachInterrupt(LB_MOTOR_HALL_B, HallSensorB, CHANGE);
+  attachInterrupt(LB_MOTOR_HALL_C, HallSensorC, CHANGE);
   
-  SerialAPI::init(ID, 9600);
   // Lock motors and get ready to go
   LBservo.writeMicroseconds(1500);
   LFservo.writeMicroseconds(1500);
@@ -175,234 +153,99 @@ int value_actual = -100;
 bool increasing = true;
 int loops = 0;
 float speeds[4];
+volatile long lb_hall_a_interrupts_raw = 0;
+volatile unsigned long lb_hall_b_interrupts_raw = 0;
+volatile unsigned long lb_hall_c_interrupts_raw = 0;
+
+volatile unsigned long lf_hall_a_interrupts_raw = 0;
+volatile unsigned long lf_hall_b_interrupts_raw = 0;
+volatile unsigned long lf_hall_c_interrupts_raw = 0;
+
+volatile unsigned long rb_hall_a_interrupts_raw = 0;
+volatile unsigned long rb_hall_b_interrupts_raw = 0;
+volatile unsigned long rb_hall_c_interrupts_raw = 0;
+
+volatile unsigned long rf_hall_a_interrupts_raw = 0;
+volatile unsigned long rf_hall_b_interrupts_raw = 0;
+volatile unsigned long rf_hall_c_interrupts_raw = 0;
+
+volatile int lb_moving_clockwise = 1;
+int regress_value;
+int lb_hall_a_interrupts_per_second;
+int interrupts_per_second[4];
+int rpm;
 
 void loop() {
+  // put your main code here, to run repeatedly:
 
-  integration_period_start = millis();
+    integration_period_start = millis();
+  delay(100);
+
+  // noInterrupts();
+  integration_period_end = millis();
+  time_elapsed = integration_period_end - integration_period_start;
+  // Serial.println(lb_hall_a_smooth_interrupt_count);
+  lb_hall_a_interrupts_per_second = lb_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
+  regress_value = (int) (lb_hall_a_interrupts_per_second - 24.995f) / 30.178f;
+  rpm = map(regress_value, -100, 100, -4300, 4300);
+
+  lb_hall_a_interrupts_raw = 0;
+  
+  interrupts_per_second[0] = lb_hall_a_interrupts_per_second;
+  // interrupts();
 
   /**
    * Get new commands from main computer, and send the actual speed
    * 
    */
-  if(SerialAPI::update()){
+   if(SerialAPI::update()){
 
-      memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
-      int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
+       memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
+       int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
 
-      //const size_t payload_size = strlen(buffer); //DOESN'T WORK IF THERE ARE ZEROs BECAUSE IT'S CONSIDERED A NULL CHARACTER
+       //const size_t payload_size = strlen(buffer); //DOESN'T WORK IF THERE ARE ZEROs BECAUSE IT'S CONSIDERED A NULL CHARACTER
 
-      memcpy(&speeds, buffer+1, 16);
+       memcpy(&speeds, buffer, 16);
 
-      lb_target_speed = (int) speeds[0];
-      rb_target_speed = (int) speeds[1]; 
-      lf_target_speed = (int) speeds[2];
-      rf_target_speed = (int) speeds[3];
+       lb_target_speed = speeds[0];
+       rb_target_speed = speeds[1]; 
+       lf_target_speed = speeds[2];
+       rf_target_speed = speeds[3];
 
-      delay(100);
+       delay(100);
 
-      SerialAPI::send_bytes('1', buffer, 5);
+       SerialAPI::send_bytes('0', &speeds, 4);
 
   }  
 
-  // Weirdest bug ever...
-  value_actual = value;
-  if(value == -92) value_actual = -91;
-  if(value == -89 || value == -88) value_actual = -87;
-  if(value == -60) value_actual = -59;
-  if(value == -28) value_actual = -27;
-  if(value == 4) value_actual = 3;
-  if(value == 36) value_actual = 35;
-  if(value == 68) value_actual = 67;
-  if(value == 100) value_actual = 99;
+  // Max forward speed is 1900us, max backward speed is 1100us
 
-  // lb_target_speed = value_actual;
-  // lf_target_speed = value_actual;
-
-
-  // Map value to microseconds and write to ESC's
-  int lb_new_us = map(lb_target_speed, -100, 100, 1100, 1900);
-  int lf_new_us = map(-lf_target_speed, -100, 100, 1100, 1900);
-  int rb_new_us = map(-rb_target_speed, -100, 100, 1100, 1900);
-  int rf_new_us = map(-rf_target_speed, -100, 100, 1100, 1900);
+  int lb_new_us = (int) (1500 + 4 * lb_target_speed);
+  int lf_new_us = (int) (1500 + 4 * lf_target_speed);
+  int rb_new_us = (int) (1500 + 4 * rb_target_speed);
+  int rf_new_us = (int) (1500 + 4 * rf_target_speed);
 
   LBservo.writeMicroseconds(lb_new_us);
   LFservo.writeMicroseconds(lf_new_us);
   RBservo.writeMicroseconds(rb_new_us);
   RFservo.writeMicroseconds(rf_new_us);
 
-  loops++;
-  integration_period_end = millis();
-  time_elapsed = integration_period_end - integration_period_start;
-
-  int lb_rpm = getRPM(time_elapsed, lb_pulses);
-
-  // if(loops % 20 == 0){
-  //   Serial.print(value);
-  //   Serial.print(",");
-  //   Serial.println(lb_rpm);
-  // }
-
-
-  lb_pulses = 0;
-  lf_pulses = 0;
-  rb_pulses = 0;
-  rf_pulses = 0;
+  delay(100);
 }
 
-int getRPM(long time_elapsed, long pulses){
-  int interrupts_per_second = pulses * (1000.0f / (float) time_elapsed);
-  int regress_value = (int) (interrupts_per_second - 24.995f) / 30.178f;
-  return map(regress_value, -100, 100, -4300, 4300);
+void HallSensorA() {        
+  direction = (digitalRead(LB_MOTOR_HALL_A) == digitalRead(LB_MOTOR_HALL_B)) ? CW : CCW;   
+  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + direction; 
 }
 
-/**
- * Hall Sensor ISR's
- * 
- */
-volatile int direction = 1;
-#define CW 1
-#define CCW -1
-
-/**
- * Serial communication helper functions
- */
-void AddFloatToBuffer(FloatBuffer fb,float val)
-{
-    if(fb.count < SERIAL_RX_BUFFER_SIZE/sizeof(float))
-    {
-        fb.b[fb.count] = val;
-        fb.count++;
-    }
-}
-
-void decode_msg(char* buffer){
-
-}
-
-void sync(void){
-  //Ask permission to write (SYN request)
-  SerialAPI::send_bytes('S',"",0);
-
-  //Wait for answer
-  int tmp = Serial.available();
-  while(!SerialAPI::update()) delay(1000);
-
-  //Read the answer
-  char buffer[SERIAL_RX_BUFFER_SIZE];
-  SerialAPI::read_data(buffer,sizeof(buffer));
-
-  Serial.write(buffer);
-
-  while(!(buffer[1] == 'Y')){
-    memset(buffer,0,SERIAL_RX_BUFFER_SIZE);
-
-    //Ask for a retransmit of wrong ID
-    SerialAPI::send_retransmit();
-
-    //Wait for answer
-    while(!SerialAPI::update()) delay(1000);
-
-    //int tmp = Serial.available();
-    //while(Serial.available()==tmp) delay(1000);
-
-    SerialAPI::read_data(buffer,sizeof(buffer));
-  }
-  
-
-  //External validation
-  for(int i=0;i<5;i++){
-    digitalWrite(13,LOW);
-    delay(200);
-    digitalWrite(13,HIGH);
-    delay(200);
-  }
-}
-
-void print_byte_array(byte* byte_array, size_t size){
-  char buffer[1];
-  memset(buffer,0,1);
-  for (int i = 0; i<size;i++){
-    sprintf(buffer, BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(byte(byte_array[i])));
-    Serial.print(buffer);
-  }
-}
-
-void char_to_float(char* str_byte, float* f){
-  char array[4];
-
-  #ifdef BIGENDIAN
-  array[0] = byte(str_byte[3]);
-  array[1] = byte(str_byte[2]);
-  array[2] = byte(str_byte[1]);
-  array[3] = byte(str_byte[0]);
-  #else 
-  array[0] = byte(str_byte[0]);
-  array[1] = byte(str_byte[1]);
-  array[2] = byte(str_byte[2]);
-  array[3] = byte(str_byte[3]);
-  #endif
-
-  memcpy(f,array,4);
-}
-
-void LBHallSensorA() {        
-  direction = (digitalRead(LB_MOTOR_HALL_A) == digitalRead(LB_MOTOR_HALL_B)) ? CW : CCW;
-  lb_pulses += direction;   
-}
-
-void LBHallSensorB() {
+void HallSensorB() {
   direction = (digitalRead(LB_MOTOR_HALL_B) == digitalRead(LB_MOTOR_HALL_C)) ? CW : CCW;
-  lb_pulses += direction; 
+  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + direction; 
 }
 
-void LBHallSensorC() {
+void HallSensorC() {
   direction = (digitalRead(LB_MOTOR_HALL_C) == digitalRead(LB_MOTOR_HALL_A)) ? CW : CCW;
-  lb_pulses += direction; 
-}
-
-void LFHallSensorA() {        
-  direction = (digitalRead(LF_MOTOR_HALL_A) == digitalRead(LF_MOTOR_HALL_B)) ? CW : CCW;
-  lb_pulses += direction;   
-}
-
-void LFHallSensorB() {
-  direction = (digitalRead(LF_MOTOR_HALL_B) == digitalRead(LF_MOTOR_HALL_C)) ? CW : CCW;
-  lb_pulses += direction; 
-}
-
-void LFHallSensorC() {
-  direction = (digitalRead(LF_MOTOR_HALL_C) == digitalRead(LF_MOTOR_HALL_A)) ? CW : CCW;
-  lb_pulses += direction; 
-}
-
-void RBHallSensorA() {        
-  direction = (digitalRead(RB_MOTOR_HALL_A) == digitalRead(RB_MOTOR_HALL_B)) ? CW : CCW;
-  lb_pulses += direction;   
-}
-
-void RBHallSensorB() {
-  direction = (digitalRead(RB_MOTOR_HALL_B) == digitalRead(RB_MOTOR_HALL_C)) ? CW : CCW;
-  lb_pulses += direction; 
-}
-
-void RBHallSensorC() {
-  direction = (digitalRead(RB_MOTOR_HALL_C) == digitalRead(RB_MOTOR_HALL_A)) ? CW : CCW;
-  lb_pulses += direction; 
-}
-
-void RFHallSensorA() {        
-  direction = (digitalRead(RF_MOTOR_HALL_A) == digitalRead(RF_MOTOR_HALL_B)) ? CW : CCW;
-  lb_pulses += direction;   
-}
-
-void RFHallSensorB() {
-  direction = (digitalRead(RF_MOTOR_HALL_B) == digitalRead(RF_MOTOR_HALL_C)) ? CW : CCW;
-  lb_pulses += direction; 
-}
-
-void RFHallSensorC() {
-  direction = (digitalRead(RF_MOTOR_HALL_C) == digitalRead(RF_MOTOR_HALL_A)) ? CW : CCW;
-  lb_pulses += direction; 
+  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + direction; 
 }
 
 void setPinAsOpenDrain(char port, int pin, int output){
