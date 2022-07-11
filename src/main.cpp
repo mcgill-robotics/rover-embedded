@@ -23,7 +23,9 @@ void setup() {
   Serial.begin(9600);
   Wrist.begin(aggKp, aggKi, aggKd, regKp, regKi, regKd);
 
-  Wrist.setMultiplierBool(true, 2);
+  Wrist.setGearRatio(2.5);
+
+  // Waist.setAngleLimits(3, 141);
 
   // TODO: After the competition, figure out how to
   // get the hardware averager to work!
