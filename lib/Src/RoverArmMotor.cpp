@@ -6,7 +6,7 @@
 // TODO: Test this class with the old code, remember to create backup beforehand!
 // I'm very suspicious of the way I handled user defined pointers...
 
-// The motor will not move until begin() is called. You also need to run setAngleLimits().
+// The motor will not move until begin() is called!
 RoverArmMotor::RoverArmMotor(int pwm_pin, int encoder_pin, int esc_type, double minimum_angle, double maximum_angle, int dir_pin)
                 :internalPIDInstance(&input, &output, &setpoint, regularKp, regularKi, regularKd, DIRECT)
                 ,internalAveragerInstance(15){
@@ -17,11 +17,6 @@ RoverArmMotor::RoverArmMotor(int pwm_pin, int encoder_pin, int esc_type, double 
     pwm = pwm_pin;
     dir = dir_pin;
     escType = esc_type;
-
-    // Initialize these two such that it's impossible to respect them. This forces
-    // the main function to also run setAngleLimits(), or else the motor won't move
-    minAngle = -1;
-    maxAngle = -10;
     
 }
 
@@ -35,7 +30,7 @@ void RoverArmMotor::begin(double aggP, double aggI, double aggD, double regP, do
         pinMode(dir, OUTPUT);
         // Allow negative outputs, the sign will be interpreted as
         // the direction pin
-        internalPIDInstance.SetOutputLimits(-255, 255);
+        internalPIDInstance.SetOutputLimits(-50, 50);
     }
     else if(escType == BLUE_ROBOTICS){
          // BlueRobotics ESC uses a servo-like control scheme where
@@ -66,10 +61,14 @@ void RoverArmMotor::begin(double aggP, double aggI, double aggD, double regP, do
 
     internalPIDInstance.SetTunings(regularKp, regularKi, regularKd);
 
-    //initialize the gear ratio to 1. 
-    gearRatio = 1;
+    //initialize the multiplier bool to false and the multiplier to 1. 
+    wrist_waist = false; 
+    multiplier = 1;
 
 }
+
+int positive_rezeros = 0;
+double real_angle = 0;
 
 // Needs to be called in each loop
 void RoverArmMotor::tick(){
@@ -84,8 +83,22 @@ void RoverArmMotor::tick(){
         currentAngle = lastAngle;
     }
 
-    currentAngle /= gearRatio;
+    // Compute distance, retune PID if necessary. Less aggressive tuning params for small errors
+    // Find the shortest from the current position to the set point
+    double gap;
 
+    if(wrist_waist){
+        (abs(setpoint-input) < abs((setpoint + 360.0f)-input)) ? gap = setpoint - input : gap = (setpoint + 360.0f) - input; 
+    }else{
+        gap = setpoint - input;
+    }
+
+    // If we are outside of angle bounds, make a setpoint intervention to bring the shaft to the midpoint
+    if(input <= lowestAngle || input >= highestAngle){
+        setpoint = gearRatio * (lowestAngle + highestAngle) / 2 ;
+    }
+
+    // Tone down P and I as the motor hones onto position
     if (abs(gap) < 10){
         internalPIDInstance.SetTunings(regularKp, regularKi, regularKd);
     }else{
@@ -95,51 +108,81 @@ void RoverArmMotor::tick(){
     // Compute the next value
     internalPIDInstance.Compute();
 
-    // Check maximum and minimum angle limits to make sure the arm isn't breaking shit
-    if(currentAngle <= maxAngle && currentAngle >= minAngle){
+    // Refuse to go to setpoint if it is outside of boundaries
+    // if(setpoint <= lowestAngle || setpoint >= highestAngle){
+    //     output = 0;
+    // }
 
-        // Interpret output data based on the ESC type defined in constructor
-        if(escType == CYTRON){
+    // Make sure we aren't snapping our tendons - move back a little bit if we are
+    // if(currentAngle >= (highestAngle - 2) && currentAngle <= (lowestAngle + 2)) output = 0.0;
 
-            // Interpret sign of the error signal as the direction pin value
-            (gap > 0) ? digitalWrite(dir, LOW) : digitalWrite(dir, HIGH);
+    // Interpret output data based on the ESC type defined in constructor
+    if(escType == CYTRON){
 
-            // Write to PWM pin
-            analogWrite(pwm, output); 
+        // Interpret sign of the error signal as the direction pin value
+        (gap > 0) ? digitalWrite(dir, HIGH) : digitalWrite(dir, LOW);
 
-        }else if(escType == BLUE_ROBOTICS){
-            // This one is more straightforward since we already defined the output range
-            // from 1100us to 1900us
-            internalServoInstance.writeMicroseconds(output);
-        }
+        // Write to PWM pin
+        analogWrite(pwm, output); 
 
+    }else if(escType == BLUE_ROBOTICS){
+        // This one is more straightforward since we already defined the output range
+        // from 1100us to 1900us
+        internalServoInstance.writeMicroseconds(output);
     }
 
     lastAngle = currentAngle;
     
 }
 
-void RoverArmMotor::setGearRatio(double value){
-    gearRatio = value; 
+bool RoverArmMotor::setMultiplierBool(bool mult, int value){
+    wrist_waist = mult; 
+    multiplier = value; 
+    return true; 
 }
 
+// For display purposes
 double RoverArmMotor::getSetpoint(){
-    return setpoint;
+    return setpoint / gearRatio;
 }
 
-void RoverArmMotor::newSetpoint(double angl){
-    setpoint = angl;
+bool RoverArmMotor::newSetpoint(double angl){
+    double setpoint_test = angl * gearRatio;
+    if(setpoint_test > lowestAngle && setpoint_test < highestAngle){
+        setpoint = setpoint_test;
+        return true;
+    }else{
+        return false;
+    }
 }
 
-void RoverArmMotor::setAngleLimits(double min, double max){
-    minAngle = min;
-    maxAngle = max;
+int RoverArmMotor::getDirection(){
+    return (digitalRead(dir) == HIGH) ? FWD : REV;
 }
 
-float RoverArmMotor::getCurrentAngle(){
-    return currentAngle;
+void RoverArmMotor::setGearRatio(double ratio){
+    gearRatio = ratio;
+}
+
+void RoverArmMotor::setAngleLimits(double lowest, double highest){
+    lowestAngle = lowest * gearRatio;
+    highestAngle = highest * gearRatio;
+}
+
+double RoverArmMotor::getCurrentAngle(){
+    return currentAngle / gearRatio;
+}
+
+double RoverArmMotor::getCurrentOutput(){
+    return output;
 }
 
 double RoverArmMotor::mapFloat(float x, float in_min, float in_max, float out_min, float out_max){
     return (double) ((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min);
+}
+
+void RoverArmMotor::WatchdogISR(){
+    // Get current angle
+
+    // Set setpoint to that angle
 }
