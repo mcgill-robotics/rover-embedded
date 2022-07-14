@@ -36,7 +36,7 @@ void setup() {
   Elbow.begin(elbaggKp, elbaggKi, elbaggKd, elbregKp, elbregKi, elbregKd);
 
 
-  Wrist.setMultiplierBool(false, 1);
+  Wrist.setMultiplierBool(true, 1);
   Elbow.setMultiplierBool(false, 1);
   Wrist.setGearRatio(48.0/18.0);
   Wrist.setAngleLimits(5.0, 141.0);
