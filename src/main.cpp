@@ -153,6 +153,7 @@ int value_actual = -100;
 bool increasing = true;
 int loops = 0;
 float speeds[4];
+char buf[17];
 volatile long lb_hall_a_interrupts_raw = 0;
 volatile unsigned long lb_hall_b_interrupts_raw = 0;
 volatile unsigned long lb_hall_c_interrupts_raw = 0;
@@ -174,6 +175,8 @@ int regress_value;
 int lb_hall_a_interrupts_per_second;
 int interrupts_per_second[4];
 int rpm;
+float lb_new_us, lf_new_us, rb_new_us, rf_new_us;
+char us_buf[20];
 
 void loop() {
   // put your main code here, to run repeatedly:
@@ -205,7 +208,7 @@ void loop() {
 
        //const size_t payload_size = strlen(buffer); //DOESN'T WORK IF THERE ARE ZEROs BECAUSE IT'S CONSIDERED A NULL CHARACTER
 
-       memcpy(&speeds, buffer, 16);
+       memcpy(&speeds, buffer+1, 16);
 
        lb_target_speed = speeds[0];
        rb_target_speed = speeds[1]; 
@@ -214,23 +217,35 @@ void loop() {
 
        delay(100);
 
-       SerialAPI::send_bytes('0', &speeds, 4);
+       buf[0] = '1';
+
+       memcpy(buf+1, speeds, 16); 
+
+       SerialAPI::send_bytes('0', buf, 17);
+
+      lb_new_us = (1500.0f + 4.0f * lb_target_speed);
+      lf_new_us = (1500.0f + 4.0f * lf_target_speed);
+      rb_new_us = (1500.0f + 4.0f * rb_target_speed);
+      rf_new_us = (1500.0f + 4.0f * rf_target_speed);
+
+      us_buf[0] = '1';
+      memcpy(us_buf+1, &lb_new_us, 4);
+      memcpy(us_buf+5, &lf_new_us, 4);
+      memcpy(us_buf+9, &rb_new_us, 4);
+      memcpy(us_buf+13, &rf_new_us, 4);
+      SerialAPI::send_bytes('0', us_buf, 17); 
+
+      delay(300);
 
   }  
 
   // Max forward speed is 1900us, max backward speed is 1100us
 
-  int lb_new_us = (int) (1500 + 4 * lb_target_speed);
-  int lf_new_us = (int) (1500 + 4 * lf_target_speed);
-  int rb_new_us = (int) (1500 + 4 * rb_target_speed);
-  int rf_new_us = (int) (1500 + 4 * rf_target_speed);
+  LBservo.writeMicroseconds((int) lb_new_us);
+  LFservo.writeMicroseconds((int) lf_new_us);
+  RBservo.writeMicroseconds((int) rb_new_us);
+  RFservo.writeMicroseconds((int) rf_new_us);
 
-  LBservo.writeMicroseconds(lb_new_us);
-  LFservo.writeMicroseconds(lf_new_us);
-  RBservo.writeMicroseconds(rb_new_us);
-  RFservo.writeMicroseconds(rf_new_us);
-
-  delay(100);
 }
 
 void HallSensorA() {        
