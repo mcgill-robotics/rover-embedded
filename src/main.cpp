@@ -175,7 +175,7 @@ int regress_value;
 int lb_hall_a_interrupts_per_second;
 int interrupts_per_second[4];
 int rpm;
-float lb_new_us, lf_new_us, rb_new_us, rf_new_us;
+float lb_new_us, lf_new_us, rb_new_us, rf_new_us, lb_prev_us=1500, lf_prev_us=1500, rb_prev_us=1500, rf_prev_us=1500;
 char us_buf[20];
 
 void loop() {
@@ -237,14 +237,19 @@ void loop() {
 
       delay(300);
 
+      if(lb_new_us != lb_prev_us) LBservo.writeMicroseconds((int) lb_new_us);
+      if(lf_new_us != lf_prev_us) LFservo.writeMicroseconds((int) lf_new_us);
+      if(rb_new_us != rb_prev_us) RBservo.writeMicroseconds((int) rb_new_us);
+      if(rf_new_us != rf_prev_us) RFservo.writeMicroseconds((int) rf_new_us);
+
+      lb_prev_us = lb_new_us;
+      lf_prev_us = lf_new_us;
+      rb_prev_us = rb_new_us;
+      rf_prev_us = rf_new_us;
+
   }  
 
   // Max forward speed is 1900us, max backward speed is 1100us
-
-  LBservo.writeMicroseconds((int) lb_new_us);
-  LFservo.writeMicroseconds((int) lf_new_us);
-  RBservo.writeMicroseconds((int) rb_new_us);
-  RFservo.writeMicroseconds((int) rf_new_us);
 
 }
 
