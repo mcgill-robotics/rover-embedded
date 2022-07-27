@@ -27,6 +27,7 @@
 #include "driverlib/gpio.h"
 #include "driverlib/sysctl.h"
 #include <wiring_private.h>
+#include <Rover_SerialAPI.h>
 
 #define MOTOR_STEPS 200
 
@@ -35,6 +36,7 @@
 #define ANGLE_PER_STEP 1.8
 #define CLAW_MAX_CLOSED_US 1635
 #define CLAW_MAX_OPEN_US 2000
+#define SERIAL_RX_BUFFER_SIZE 64
 
 #define UPPER_CAROUSEL_DIR PD_2
 #define UPPER_CAROUSEL_STEP PD_3
@@ -56,12 +58,27 @@
 volatile bool UPPER_CAROUSEL_FAULT = false;
 volatile bool LOWER_CAROUSEL_FAULT = false;
 
-int upper_carousel_rpm = 75;
-int lower_carousel_rpm = 40;
-
 BasicStepperDriver UpperCarousel(MOTOR_STEPS, UPPER_CAROUSEL_DIR, UPPER_CAROUSEL_STEP, UPPER_CAROUSEL_ENABLE);
 BasicStepperDriver LowerCarousel(MOTOR_STEPS, LOWER_CAROUSEL_DIR, LOWER_CAROUSEL_STEP, LOWER_CAROUSEL_ENABLE);
 Servo Claw;
+
+int upper_carousel_rpm = 75;
+int lower_carousel_rpm = 40;
+
+char buffer[SERIAL_RX_BUFFER_SIZE];
+float received_data[4];
+char temp_arr[4];
+bool wantClawState;
+bool wantShutdown;
+bool clawState;
+float scom_speed = 0;
+float scom_desired_speed;
+int scom_real_speed = 0;
+int scom_desired_real_speed;
+float step1_inc_angle;
+float step2_inc_angle;
+#define SPEED_DEADBAND 1
+#define MOTOR_ACCEL_DELAY_MS 10
 
 // Function signatures, ignore pls
 void printDouble(double val, byte precision);
@@ -73,23 +90,18 @@ void setPinAsOpenDrain(char port, int pin, int output);
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(9600);
-  Serial.println("Serial communication OK");
+  SerialAPI::init(5, 9600);
   uint32_t clock_freq = SysCtlClockGet();
-  Serial.print("Current system clock speed: ");
-  Serial.println(clock_freq);
-  Serial.println();
 
-  Serial.println("Initializing open-drain outputs for 5V logic operation...");
   // Set PB6 up for open-drain operation and wait while the
   // register changes are committed to IO pins
   Claw.attach(CLAW_SERVO_PIN);
+  Claw.writeMicroseconds(1635);
+  clawState = true;
   delay(1000);
   setPinAsOpenDrain('B', 6, 1);
   delay(3000);
-  Serial.println("Done.");
 
-  Serial.println("Initializing science box steppers...");
   UpperCarousel.setEnableActiveState(LOW);
   LowerCarousel.setEnableActiveState(LOW);
   UpperCarousel.begin(upper_carousel_rpm, MICROSTEPS);
@@ -119,42 +131,17 @@ void setup() {
 
 }
 
-int upper_carousel_forward = 1;
-int lower_carousel_forward = 1;
-
-float upper_carousel_current_angle = 45;
-float lower_carousel_current_angle = 45;
-
-float angle;
-
-bool upper_carousel_enabled = false;
-bool lower_carousel_enabled = false;
-
-int z;
-float duty_cycle;
-
-int current_adc;
-float current;
-
-int upper_carousel_wiggle_angle = 30;
-int upper_carousel_wiggle_count = 10;
-int upper_carousel_wiggle_delay_ms = 25;
-
-int lower_carousel_wiggle_angle = 15;
-int lower_carousel_wiggle_count = 10;
-int lower_carousel_wiggle_delay_ms = 50;
-
 void loop() {
 
   delay(100);
 
-  if(UPPER_CAROUSEL_FAULT){
-    Serial.println("Stepper at D6 has encountered a fault condition. System cannot continue until fault condition is resolved.");
-  }
+  // if(UPPER_CAROUSEL_FAULT){
+  //   Serial.println("Stepper at D6 has encountered a fault condition. System cannot continue until fault condition is resolved.");
+  // }
 
-  if(LOWER_CAROUSEL_FAULT){
-    Serial.println("Stepper at D11 has encountered a fault condition. System cannot continue until fault condition is resolved.");
-  }
+  // if(LOWER_CAROUSEL_FAULT){
+  //   Serial.println("Stepper at D11 has encountered a fault condition. System cannot continue until fault condition is resolved.");
+  // }
 
 
   while(UPPER_CAROUSEL_FAULT || LOWER_CAROUSEL_FAULT){
@@ -168,323 +155,68 @@ void loop() {
 
   }
 
-  if(Serial.available()){
-    Serial.println("-----------------------------");
-    Serial.print("Press A to step the stepper at D6 by ");Serial.print(ANGLE_PER_STEP);Serial.print(" degrees.\n");
-    Serial.print("Press S to step the stepper at D11 by ");Serial.print(ANGLE_PER_STEP);Serial.print(" degrees.\n");
-    Serial.println("Press Z to reverse direction of the stepper at D6");
-    Serial.println("Press X to reverse direction of the stepper at D11");
-    Serial.println("Press G for status report");
-    Serial.println("Press J to toggle the stepper at D6");
-    Serial.println("Press K to toggle the stepper at D11");
-    Serial.println("Press C to open claw");
-    Serial.println("Press V to close claw");
-    Serial.println("Press B to raise lead screw");
-    Serial.println("Press N to lower lead screw");
-    Serial.println("Press O to shake upper carousel");
-    Serial.println("Press P to shake lower carousel");
-    Serial.println("Press T to get value from current sensor");
-    Serial.println("Press Q to adjust upper carousel RPM");
-    Serial.println("Press W to adjust lower carousel RPM");
-    Serial.println("Press E to adjust upper carousel wiggle amplitude");
-    Serial.println("Press R to adjust lower carousel wiggle amplitude");
-    Serial.println("Press Y to adjust upper carousel number of wiggles");
-    Serial.println("Press U to adjust lower carousel number of wiggles");
-    Serial.println("Press I to rotate upper carousel by a certain angle");
-    Serial.println("Press M to rotate lower carousel by a certain angle");
-    Serial.println("-----------------------------");
+  if(SerialAPI::update()){
+    memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
+    int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
+    memcpy(received_data, buffer+1, 16);
+    memcpy(temp_arr, &(received_data[0]), 4);
+    wantClawState = (bool)(temp_arr[0] & 1<<2)>>2;
+    wantShutdown = (bool)(temp_arr[0] & 1<<5)>>5;
+    scom_desired_speed = received_data[1];
+    step1_inc_angle = received_data[2];
+    step2_inc_angle = received_data[3];
 
-    bool valid_input = false;
+    if(!wantShutdown){
+      UpperCarousel.rotate(step1_inc_angle);
+      LowerCarousel.rotate(step2_inc_angle);
 
-    while(!valid_input){
-      if(Serial.available()){
-        
-        int input_character = Serial.read();
-
-        switch(input_character){
-
-          case 'I':
-            Serial.print("Enter angle to rotate upper stepper by: ");
-            while(true){
-              if(Serial.available()){
-                angle = Serial.parseInt();
-                break;
-              }
-            }
-            UpperCarousel.rotate(angle);
-            valid_input = true;
-            break;
-
-          case 'M':
-            Serial.print("Enter angle to rotate lower stepper by: ");
-            while(true){
-              if(Serial.available()){
-                angle = Serial.parseFloat();
-                break;
-              }
-            }
-            LowerCarousel.rotate(angle);
-            valid_input = true;
-            break;
-
-          case 'Q':
-            Serial.print("Current RPM for upper carousel: ");Serial.println(upper_carousel_rpm);
-            Serial.print("Enter new RPM: ");
-            while(true){
-              if(Serial.available()){
-                upper_carousel_rpm = Serial.parseInt();
-                break;
-              }
-            }
-            UpperCarousel.begin(upper_carousel_rpm, MICROSTEPS);
-            valid_input = true;
-            break;
-          
-          case 'W':
-            Serial.print("Current RPM for lower carousel: ");Serial.println(lower_carousel_rpm);
-            Serial.print("Enter new RPM: ");
-            while(true){
-              if(Serial.available()){
-                lower_carousel_rpm = Serial.parseInt();
-                break;
-              }
-            }
-            LowerCarousel.begin(lower_carousel_rpm, MICROSTEPS);
-            valid_input = true;
-            break;
-          
-          case 'E':
-            Serial.print("Current wiggle amplitude for upper carousel: ");Serial.println(upper_carousel_wiggle_angle);
-            Serial.print("Enter new wiggle amplitude: ");
-            while(true){
-              if(Serial.available()){
-                upper_carousel_wiggle_angle = Serial.parseInt();
-                break;
-              }
-            }
-            valid_input = true;
-            break;
-          
-          case 'R':
-            Serial.print("Current wiggle amplitude for lower carousel: ");Serial.println(lower_carousel_wiggle_angle);
-            Serial.print("Enter new wiggle amplitude: ");
-            while(true){
-              if(Serial.available()){
-                lower_carousel_rpm = Serial.parseInt();
-                break;
-              }
-            }
-            valid_input = true;
-            break;
-          
-          case 'Y':
-            Serial.print("Current wiggle count for upper carousel: ");Serial.println(upper_carousel_wiggle_count);
-            Serial.print("Enter new wiggle count: ");
-            while(true){
-              if(Serial.available()){
-                upper_carousel_wiggle_count = Serial.parseInt();
-                break;
-              }
-            }
-            valid_input = true;
-            break;
-          
-          case 'U':
-            Serial.print("Current wiggle count for lower carousel: ");Serial.println(lower_carousel_wiggle_count);
-            Serial.print("Enter new wiggle count: ");
-            while(true){
-              if(Serial.available()){
-                lower_carousel_wiggle_count = Serial.parseInt();
-                break;
-              }
-            }
-            valid_input = true;
-            break;
-          
-          case 'T':
-            current_adc = analogRead(CURRENT_SENSE_PIN) - 522;
-            Serial.print("Current consumption of SCOM motor: ");
-            Serial.println(current_adc);
-            valid_input = true;
-            break;
-          
-          case 'O':
-            for(int i=0; i<upper_carousel_wiggle_count; i++){
-              UpperCarousel.rotate(upper_carousel_wiggle_angle);
-              delay(upper_carousel_wiggle_delay_ms);
-              UpperCarousel.rotate(-2 * upper_carousel_wiggle_angle);
-              delay(upper_carousel_wiggle_delay_ms);
-              UpperCarousel.rotate(upper_carousel_wiggle_angle);
-              delay(upper_carousel_wiggle_delay_ms);
-            }
-            valid_input = true;
-            break;
-          
-          case 'P':
-            for(int i=0; i<lower_carousel_wiggle_count; i++){
-              LowerCarousel.rotate(lower_carousel_wiggle_angle);
-              delay(lower_carousel_wiggle_delay_ms);
-              LowerCarousel.rotate(-2 * lower_carousel_wiggle_angle);
-              delay(lower_carousel_wiggle_delay_ms);
-              LowerCarousel.rotate(lower_carousel_wiggle_angle);
-              delay(lower_carousel_wiggle_delay_ms);
-            }
-            valid_input = true;
-            break;
-
-          case 'B':
-            UpperCarousel.disable();
-            LowerCarousel.disable();
-            // digitalWrite(UPPER_CAROUSEL_ENABLE, HIGH);
-            // digitalWrite(LOWER_CAROUSEL_ENABLE, HIGH);
-            upper_carousel_enabled = false;
-            lower_carousel_enabled = false;
-
-            digitalWrite(SOCOM_DIR, LOW);
-
-            for(int i=0; i<255; i++){
-              current_adc = analogRead(CURRENT_SENSE_PIN) - 522;
-              current = (current_adc * 27.03) / 1023;
-              Serial.print("Current draw of SCOM motor: ");
-              Serial.println(current_adc);
-              analogWrite(SOCOM_PWM, i);
-              delay(30);
-            }
-            for(int i=100; i>=0; i--){
-              current_adc = analogRead(CURRENT_SENSE_PIN) - 522;
-              current = (current_adc * 27.03) / 1023;
-              Serial.print("Current draw of SCOM motor: ");
-              Serial.println(current_adc);
-              analogWrite(SOCOM_PWM, i);
-              delay(30);
-            }
-
-            analogWrite(SOCOM_PWM, 0);
-            valid_input = true;
-
-            break;
-          
-          case 'N':
-            UpperCarousel.disable();
-            LowerCarousel.disable();
-            // digitalWrite(UPPER_CAROUSEL_ENABLE, HIGH);
-            // digitalWrite(LOWER_CAROUSEL_ENABLE, HIGH);
-            upper_carousel_enabled = false;
-            lower_carousel_enabled = false;
-
-            digitalWrite(SOCOM_DIR, HIGH);
-
-            for(int i=0; i<255; i++){
-              current_adc = analogRead(CURRENT_SENSE_PIN) - 522;
-              current = (current_adc * 27.03) / 1023;
-              Serial.print("Current draw of SCOM motor: ");
-              Serial.println(current_adc);
-              analogWrite(SOCOM_PWM, i);
-              delay(30);
-            }
-            for(int i=100; i>=0; i--){
-              current_adc = analogRead(CURRENT_SENSE_PIN) - 522;
-              current = (current_adc * 27.03) / 1023;
-              Serial.print("Current draw of SCOM motor: ");
-              Serial.println(current_adc);
-              analogWrite(SOCOM_PWM, i);
-              delay(30);
-            }
-
-            valid_input = true;
-            break;
-
-          case 'C':
-            // val = map(100, 0, 100, CLAW_MAX_CLOSED_US, CLAW_MAX_OPEN_US);
-            Claw.writeMicroseconds(2000);
-            delay(2000);
-            valid_input = true;
-            break;
-          
-          case 'V':
-            // val = map(0, 0, 100, CLAW_MAX_CLOSED_US, CLAW_MAX_OPEN_US);
-            Claw.writeMicroseconds(1635);
-            delay(2000);
-            valid_input = true;
-            break;
-
-          case 'J':
-            upper_carousel_enabled ? UpperCarousel.disable() : UpperCarousel.enable();
-            upper_carousel_enabled = !(upper_carousel_enabled);
-            valid_input = true;
-            break;
-
-          case 'K':
-            lower_carousel_enabled ? LowerCarousel.disable() : LowerCarousel.enable();
-            lower_carousel_enabled = !(lower_carousel_enabled);
-            valid_input = true;
-            break;
-          
-          case 'A':
-
-            for(int i=0;i<2;i++){
-              UpperCarousel.rotate(upper_carousel_forward * ANGLE_PER_STEP);
-            
-              // Internally keep track of the current angle,
-              // after everything else is done
-              if(upper_carousel_forward == 1){
-                upper_carousel_current_angle += ANGLE_PER_STEP;
-                if(upper_carousel_current_angle >= 360){
-                  upper_carousel_current_angle -= 360;
-                }
-              }else{
-                upper_carousel_current_angle -= ANGLE_PER_STEP;
-                if(upper_carousel_current_angle < 0){
-                  upper_carousel_current_angle += 360;
-                }
-              }
-            }
-            
-            
-            valid_input = true;
-            break;
-            
-          case 'S':
-
-          for(int i=0;i<2;i++){
-            LowerCarousel.rotate(lower_carousel_forward * ANGLE_PER_STEP);
-
-            // Internally keep track of the current angle,
-            // after everything else is done
-            if(lower_carousel_forward == 1){
-              lower_carousel_current_angle += ANGLE_PER_STEP;
-              if(lower_carousel_current_angle >= 360){
-                lower_carousel_current_angle -= 360;
-              }
-            }else{
-              lower_carousel_current_angle -= ANGLE_PER_STEP;
-              if(lower_carousel_current_angle < 0){
-                lower_carousel_current_angle += 360;
-              }
-            }
-          }
-            
-          valid_input = true;
-          break;
-            
-          case 'Z':
-            upper_carousel_forward *= (-1);
-            valid_input = true;
-            break;
-            
-          case 'X':
-            lower_carousel_forward *= (-1);
-            valid_input = true;
-            break;
-
-          case 'G':
-            StatusReport();
-            valid_input = true;
-            break;
-
-        }
+      if(wantClawState == true && clawState == false){
+        Claw.writeMicroseconds(1635);
       }
+      else if (wantClawState == false && clawState == true)
+      {
+        Claw.writeMicroseconds(2000);
+      }
+
+      if(abs(scom_desired_speed-scom_speed) >= SPEED_DEADBAND){
+        scom_desired_real_speed = (abs(scom_desired_speed)/100.0) * 255;
+        if((scom_speed < 0 && scom_desired_speed >= 0)||(scom_speed >= 0 && scom_desired_speed < 0)){
+          for(int i = scom_real_speed; i > -1; i--){
+            analogWrite(SOCOM_PWM, i);
+            scom_real_speed = i;
+            delay(MOTOR_ACCEL_DELAY_MS);
+          }
+          uint8_t pinSend = (scom_speed > 0) ? HIGH : LOW;
+          digitalWrite(SOCOM_DIR, pinSend);
+        }
+        if(scom_desired_real_speed > scom_real_speed){
+          for(int i = scom_real_speed; i<= scom_desired_real_speed; i++){
+            analogWrite(SOCOM_PWM, i);
+            scom_real_speed = i;
+            delay(MOTOR_ACCEL_DELAY_MS);
+          }
+        }else{
+          for(int i = scom_real_speed; i>= scom_desired_real_speed; i--){
+            analogWrite(SOCOM_PWM, i);
+            scom_real_speed = i;
+            delay(MOTOR_ACCEL_DELAY_MS);
+          }
+        }
+        scom_speed = (scom_real_speed/255.0) * 100.0;
+      }
+    }else{
+      for(int i = scom_real_speed; i > -1; i--){
+            analogWrite(SOCOM_PWM, i);
+            scom_real_speed = i;
+            delay(MOTOR_ACCEL_DELAY_MS);
+          }
+      scom_speed = 0;
     }
+    char send_buf = 0;
+    send_buf += ((char) clawState) << 2;
+    send_buf += ((char) UPPER_CAROUSEL_FAULT) << 4;
+    send_buf += ((char) LOWER_CAROUSEL_FAULT) << 5;
+    SerialAPI::send_bytes('2', &send_buf, 1);
   }
 }
 
@@ -515,32 +247,6 @@ void printDouble( double val, byte precision){
       Serial.print("0");
     Serial.print(frac,DEC) ;
   }
-}
-
-void StatusReport(){
-  Serial.println("");
-  
-  Serial.println("---[Current status of steppers]---");
-  Serial.println("");
-  Serial.print("Angle of stepper #1: ");
-  printDouble(upper_carousel_current_angle, 3);
-  
-  if(upper_carousel_forward == 1){
-    Serial.println("Direction of stepper #1: Forward");
-  }else{
-    Serial.println("Direction of stepper #1: Backward");
-  }
-  
-  Serial.println("");
-  Serial.print("Angle of stepper #2: ");
-  printDouble(lower_carousel_current_angle, 3);
-  if(lower_carousel_forward == 1){
-    Serial.println("Direction of stepper #2: Forward");
-  }else{
-    Serial.println("Direction of stepper #2: Backward");
-  }
-
-  Serial.println("");
 }
 
 void upperCarouselFaultISR(){
