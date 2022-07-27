@@ -81,17 +81,14 @@ float step2_inc_angle;
 #define MOTOR_ACCEL_DELAY_MS 10
 
 // Function signatures, ignore pls
-void printDouble(double val, byte precision);
 void upperCarouselFaultISR();
 void lowerCarouselFaultISR();
-void StatusReport();
 void setPinAsOpenDrain(char port, int pin, int output);
 
 
 void setup() {
   // put your setup code here, to run once:
   SerialAPI::init(5, 9600);
-  uint32_t clock_freq = SysCtlClockGet();
 
   // Set PB6 up for open-drain operation and wait while the
   // register changes are committed to IO pins
@@ -126,8 +123,6 @@ void setup() {
   attachInterrupt(LOWER_CAROUSEL_NFAULT, lowerCarouselFaultISR, GPIO_FALLING_EDGE);
 
   delay(1000);
-  Serial.println("Done.");
-  Serial.println("Initialization complete!");
 
 }
 
@@ -221,33 +216,6 @@ void loop() {
 }
 
 // --[PRINT UTILITY FUNCTIONS]--
-
-void printDouble( double val, byte precision){
-  // prints val with number of decimal places determine by precision
-  // precision is a number from 0 to 6 indicating the desired decimial places
-  // example: printDouble( 3.1415, 2); // prints 3.14 (two decimal places)
-
-  Serial.print (int(val));  //prints the int part
-  if( precision > 0) {
-    Serial.print("."); // print the decimal point
-    unsigned long frac;
-    unsigned long mult = 1;
-    byte padding = precision -1;
-    while(precision--)
-       mult *=10;
-       
-    if(val >= 0)
-      frac = (val - int(val)) * mult;
-    else
-      frac = (int(val)- val ) * mult;
-    unsigned long frac1 = frac;
-    while( frac1 /= 10 )
-      padding--;
-    while(  padding--)
-      Serial.print("0");
-    Serial.print(frac,DEC) ;
-  }
-}
 
 void upperCarouselFaultISR(){
   UPPER_CAROUSEL_FAULT = true;
