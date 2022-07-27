@@ -167,10 +167,12 @@ void loop() {
 
       if(wantClawState == true && clawState == false){
         Claw.writeMicroseconds(1635);
+        clawState = true;
       }
       else if (wantClawState == false && clawState == true)
       {
         Claw.writeMicroseconds(2000);
+        clawState = false;
       }
 
       if(abs(scom_desired_speed-scom_speed) >= SPEED_DEADBAND){
