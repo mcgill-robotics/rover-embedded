@@ -155,8 +155,8 @@ void loop() {
     int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
     memcpy(received_data, buffer+1, 16);
     memcpy(temp_arr, &(received_data[0]), 4);
-    wantClawState = (bool)(temp_arr[0] & 1<<2)>>2;
-    wantShutdown = (bool)(temp_arr[0] & 1<<5)>>5;
+    wantClawState = (bool)(temp_arr[0] & 1<<2);
+    wantShutdown = (bool)(temp_arr[0] & 1<<5);
     scom_desired_speed = received_data[1];
     step1_inc_angle = received_data[2];
     step2_inc_angle = received_data[3];
