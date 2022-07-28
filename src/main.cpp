@@ -5,6 +5,7 @@
 #include "driverlib/sysctl.h"
 #include <Rover_SerialAPI.h>
 #include <Arduino.h>
+#include <driverlib/timer.h>
 
 /*
  * PINOUT NOTE:
@@ -81,8 +82,13 @@ void AddFloatToBuffer(FloatBuffer fb, float val);
 void print_byte_array(byte* byte_array, size_t size);
 void char_to_float(char* str_byte, float* f);
 bool syn2master(HardwareSerial Serial);
+void AccelInt(void);
 static char buffer[SERIAL_RX_BUFFER_SIZE];
 static float fbuffer[SERIAL_RX_BUFFER_SIZE];
+volatile int lb_cur_speed = 1500;
+volatile int lf_cur_speed = 1500;
+volatile int rb_cur_speed = 1500;
+volatile int rf_cur_speed = 1500;
 #define ID 'a'
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)  \
@@ -152,6 +158,13 @@ void setup() {
   RBservo.writeMicroseconds(1500);
   RFservo.writeMicroseconds(1500);
 
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
+  while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER4)){}
+  TimerConfigure(TIMER4_BASE, TIMER_CFG_A_PERIODIC);
+  TimerLoadSet(TIMER4_BASE, TIMER_A, 4000); //every 5ms
+  TimerIntRegister(TIMER4_BASE, TIMER_A, AccelInt);
+  TimerEnable(TIMER4_BASE, TIMER_A);
+
   delay(3000);
 }
 
@@ -193,7 +206,10 @@ bool lb_leap_up=false, lb_leap_down=false, rb_leap_up=false, rb_leap_down=false,
 
 void loop() {
   // put your main code here, to run repeatedly:
-
+  lb_cur_speed = LBservo.readMicroseconds();
+  lf_cur_speed = LFservo.readMicroseconds();
+  rb_cur_speed = RBservo.readMicroseconds();
+  rf_cur_speed = RFservo.readMicroseconds();
   integration_period_start = millis();
   delay(100);
   integration_period_end = millis();
@@ -235,7 +251,7 @@ void loop() {
        rb_target_speed = speeds[2];
        rf_target_speed = speeds[3];
 
-       delay(100);
+       delay(50);
 
        buf[0] = '1';
 
@@ -250,7 +266,7 @@ void loop() {
       memcpy(us_buf+13, &rf_regress_value, 4);
       SerialAPI::send_bytes('0', us_buf, 17);
 
-      delay(300); 
+      delay(100); 
 
   }  
 
@@ -353,10 +369,10 @@ void loop() {
   rb_new_us = (1500.0f + 4.0f * rb_target_speed);
   rf_new_us = (1500.0f + 4.0f * rf_target_speed);
 
-  if(lb_new_us != lb_prev_us) LBservo.writeMicroseconds((int) lb_new_us);
-  if(lf_new_us != lf_prev_us) LFservo.writeMicroseconds((int) lf_new_us);
-  if(rb_new_us != rb_prev_us) RBservo.writeMicroseconds((int) rb_new_us);
-  if(rf_new_us != rf_prev_us) RFservo.writeMicroseconds((int) rf_new_us);
+  // if(lb_new_us != lb_prev_us) LBservo.writeMicroseconds((int) lb_new_us);
+  // if(lf_new_us != lf_prev_us) LFservo.writeMicroseconds((int) lf_new_us);
+  // if(rb_new_us != rb_prev_us) RBservo.writeMicroseconds((int) rb_new_us);
+  // if(rf_new_us != rf_prev_us) RFservo.writeMicroseconds((int) rf_new_us);
 
   lb_prev_us = lb_new_us;
   lf_prev_us = lf_new_us;
@@ -432,6 +448,49 @@ void RFHallSensorC() {
   rf_direction = (digitalRead(RF_MOTOR_HALL_C) == digitalRead(RF_MOTOR_HALL_A)) ? CW : CCW;
   rf_hall_a_interrupts_raw = rf_hall_a_interrupts_raw + rf_direction; 
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
+void AccelInt(){
+  //lb
+  if(lb_new_us > lb_cur_speed){
+    LBservo.writeMicroseconds(lb_cur_speed+1);
+    lb_cur_speed +=1;
+  }
+  else if(lb_new_us < lb_cur_speed){
+    LBservo.writeMicroseconds(lb_cur_speed-1);
+    lb_cur_speed -= 1;
+  }
+  //lf
+  if(lf_new_us > lf_cur_speed){
+    LBservo.writeMicroseconds(lf_cur_speed+1);
+    lf_cur_speed +=1;
+  }
+  else if(lf_new_us < lf_cur_speed){
+    LBservo.writeMicroseconds(lf_cur_speed-1);
+    lf_cur_speed -= 1;
+  }
+  //rb
+  if(rb_new_us > rb_cur_speed){
+    LBservo.writeMicroseconds(rb_cur_speed+1);
+    rb_cur_speed +=1;
+  }
+  else if(rb_new_us < rb_cur_speed){
+    LBservo.writeMicroseconds(rb_cur_speed-1);
+    rb_cur_speed -= 1;
+  }
+  //rf
+  if(rf_new_us > rf_cur_speed){
+    LBservo.writeMicroseconds(rf_cur_speed+1);
+    rf_cur_speed +=1;
+  }
+  else if(rf_new_us < rf_cur_speed){
+    LBservo.writeMicroseconds(rf_cur_speed-1);
+    rf_cur_speed -= 1;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
 
 void setPinAsOpenDrain(char port, int pin, int output){
   int amsel_register, pctl_register, dir_register, afsel_register, odr_register, den_register, data_register, pin_idx = pin;
