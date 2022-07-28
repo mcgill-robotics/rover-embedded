@@ -1,4 +1,6 @@
 #include <Servo.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <tm4c123gh6pm.h>
 #include "inc/hw_memmap.h"
 #include "driverlib/gpio.h"
@@ -6,6 +8,8 @@
 #include <Rover_SerialAPI.h>
 #include <Arduino.h>
 #include <driverlib/timer.h>
+#include "inc/hw_ints.h"
+#include "driverlib/interrupt.h"
 
 /*
  * PINOUT NOTE:
@@ -161,11 +165,13 @@ void setup() {
   SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
   while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER4)){}
   TimerConfigure(TIMER4_BASE, TIMER_CFG_A_PERIODIC);
-  TimerLoadSet(TIMER4_BASE, TIMER_A, 4000); //every 5ms
   TimerIntRegister(TIMER4_BASE, TIMER_A, AccelInt);
+  TimerLoadSet(TIMER4_BASE, TIMER_A, 4000);
   TimerEnable(TIMER4_BASE, TIMER_A);
+  IntEnable(INT_TIMER4A);
+  TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
 
-  delay(3000);
+  // delay(3000);
 }
 
 volatile long lb_hall_a_interrupts_raw = 0;
@@ -203,6 +209,8 @@ int filtered_lb_us, filtered_lf_us, filtered_rb_us, filtered_rf_us;
 int loops = 0;
 bool lb_leap_up=false, lb_leap_down=false, rb_leap_up=false, rb_leap_down=false,
      rf_leap_up=false, rf_leap_down=false, lf_leap_up=false, lf_leap_down=false;
+  
+volatile int lb_increment, rb_increment, lf_increment, rf_increment;
 
 void loop() {
   // put your main code here, to run repeatedly:
@@ -210,6 +218,7 @@ void loop() {
   lf_cur_speed = LFservo.readMicroseconds();
   rb_cur_speed = RBservo.readMicroseconds();
   rf_cur_speed = RFservo.readMicroseconds();
+
   integration_period_start = millis();
   delay(100);
   integration_period_end = millis();
@@ -258,11 +267,13 @@ void loop() {
        memcpy(buf+1, speeds, 16);
 
        SerialAPI::send_bytes('0', buf, 17);
+      
+      float potat = (float) lf_increment;
 
       us_buf[0] = '1';
       memcpy(us_buf+1, &lb_regress_value, 4);
       memcpy(us_buf+5, &rb_regress_value, 4);
-      memcpy(us_buf+9, &lf_regress_value, 4);
+      memcpy(us_buf+9, &potat, 4);
       memcpy(us_buf+13, &rf_regress_value, 4);
       SerialAPI::send_bytes('0', us_buf, 17);
 
@@ -270,109 +281,15 @@ void loop() {
 
   }  
 
-  // Max forward speed is 1900us, max backward speed is 1100us
-  
-//   // If there is a big difference between current and target speeds, accel slowly
-//   filtered_lb_target_speed = lb_target_speed;
-//   filtered_rb_target_speed = rb_target_speed;
-//   filtered_lf_target_speed = lf_target_speed;
-//   filtered_rf_target_speed = rf_target_speed;
-
-// ///////////////////////////////////////////////////////////////////////////
-
-//   if( (lb_target_speed - lb_regress_value) > 20){
-//     lb_leap_up = true;
-//     lb_leap_down = false;
-//     filtered_lb_target_speed = lb_regress_value;
-//   }
-
-//   if( (lb_target_speed - lb_regress_value) < -20){
-//     lb_leap_down = true;
-//     lb_leap_up = false;
-//     filtered_lb_target_speed = lb_regress_value;
-//   }
-
-//   if(lb_leap_up && (loops % 3 == 0) ){
-//     filtered_lb_target_speed++;
-
-//   }else if(lb_leap_down && (loops % 3 == 0) ){
-//     filtered_lb_target_speed--;
-//   }
-
-// /////////////////////////////////////////////////////////////////////////
-
-//   if( (lf_target_speed - lf_regress_value) > 20){
-//     lf_leap_up = true;
-//     lf_leap_down = false;
-//     filtered_lf_target_speed = lf_regress_value;
-//   }
-
-//   if( (lf_target_speed - lf_regress_value) < -20){
-//     lf_leap_down = true;
-//     lf_leap_up = false;
-//     filtered_lf_target_speed = lf_regress_value;
-//   }
-
-//   if(lf_leap_up && (loops % 3 == 0) ){
-//     filtered_lf_target_speed++;
-
-//   }else if(lf_leap_down && (loops % 3 == 0) ){
-//     filtered_lf_target_speed--;
-//   }
-
-// //////////////////////////////////////////////////////////////////////////
-
-//   if( (rb_target_speed - rb_regress_value) > 20){
-//     rb_leap_up = true;
-//     rb_leap_down = false;
-//     filtered_rb_target_speed = rb_regress_value;
-//   }
-
-//   if( (rb_target_speed - rb_regress_value) < -20){
-//     rb_leap_down = true;
-//     rb_leap_up = false;
-//     filtered_rb_target_speed = rb_regress_value;
-//   }
-
-//   if(rb_leap_up && (loops % 3 == 0) ){
-//     filtered_rb_target_speed++;
-
-//   }else if(rb_leap_down && (loops % 3 == 0) ){
-//     filtered_rb_target_speed--;
-//   }
-
-// /////////////////////////////////////////////////////////////////////////
-
-//   if( (rf_target_speed - rf_regress_value) > 20){
-//     rf_leap_up = true;
-//     rf_leap_down = false;
-//     filtered_rf_target_speed = rf_regress_value;
-//   }
-
-//   if( (rf_target_speed - rf_regress_value) < -20){
-//     rf_leap_down = true;
-//     rf_leap_up = false;
-//     filtered_rf_target_speed = rf_regress_value;
-//   }
-
-//   if(rf_leap_up && (loops % 3 == 0) ){
-//     filtered_rf_target_speed++;
-
-//   }else if(rf_leap_down && (loops % 3 == 0) ){
-//     filtered_rf_target_speed--;
-//   }
-
-// //////////////////////////////////////////////////////////////////////////
-
   lb_new_us = (1500.0f + 4.0f * lb_target_speed);
   lf_new_us = (1500.0f + 4.0f * lf_target_speed);
   rb_new_us = (1500.0f + 4.0f * rb_target_speed);
   rf_new_us = (1500.0f + 4.0f * rf_target_speed);
 
-  // if(lb_new_us != lb_prev_us) LBservo.writeMicroseconds((int) lb_new_us);
-  // if(lf_new_us != lf_prev_us) LFservo.writeMicroseconds((int) lf_new_us);
-  // if(rb_new_us != rb_prev_us) RBservo.writeMicroseconds((int) rb_new_us);
-  // if(rf_new_us != rf_prev_us) RFservo.writeMicroseconds((int) rf_new_us);
+  LBservo.writeMicroseconds((int) lb_cur_speed + lb_increment);
+  LFservo.writeMicroseconds((int) lf_cur_speed + lf_increment);
+  RBservo.writeMicroseconds((int) rb_cur_speed + rb_increment);
+  RFservo.writeMicroseconds((int) rf_cur_speed + rf_increment);
 
   lb_prev_us = lb_new_us;
   lf_prev_us = lf_new_us;
@@ -452,42 +369,49 @@ void RFHallSensorC() {
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 void AccelInt(){
+  TimerIntClear(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
+
   //lb
   if(lb_new_us > lb_cur_speed){
-    LBservo.writeMicroseconds(lb_cur_speed+1);
-    lb_cur_speed +=1;
+    lb_increment++;
   }
   else if(lb_new_us < lb_cur_speed){
-    LBservo.writeMicroseconds(lb_cur_speed-1);
-    lb_cur_speed -= 1;
+    lb_increment--;
+  }else{
+    lb_increment = 0;
   }
+
   //lf
   if(lf_new_us > lf_cur_speed){
-    LBservo.writeMicroseconds(lf_cur_speed+1);
-    lf_cur_speed +=1;
+    lf_increment++;
   }
   else if(lf_new_us < lf_cur_speed){
-    LBservo.writeMicroseconds(lf_cur_speed-1);
-    lf_cur_speed -= 1;
+    lf_increment--;
+  }else{
+    lf_increment = 0;
   }
+
   //rb
   if(rb_new_us > rb_cur_speed){
-    LBservo.writeMicroseconds(rb_cur_speed+1);
-    rb_cur_speed +=1;
+    rb_increment ++;
   }
   else if(rb_new_us < rb_cur_speed){
-    LBservo.writeMicroseconds(rb_cur_speed-1);
-    rb_cur_speed -= 1;
+    rb_increment--;
+  }else{
+    rb_increment = 0;
   }
+
   //rf
   if(rf_new_us > rf_cur_speed){
-    LBservo.writeMicroseconds(rf_cur_speed+1);
-    rf_cur_speed +=1;
+    rf_increment++;
   }
   else if(rf_new_us < rf_cur_speed){
-    LBservo.writeMicroseconds(rf_cur_speed-1);
-    rf_cur_speed -= 1;
+    rf_increment--;
+  }else{
+    rf_increment = 0;
   }
+
+  
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
