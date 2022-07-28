@@ -58,19 +58,14 @@
 Servo LBservo, LFservo, RBservo, RFservo;
 #define MAX_ACCEL 5
 
-volatile long lf_pulses=0, lb_pulses=0, rb_pulses=0, rf_pulses=0;
-unsigned long integration_period_start=0, integration_period_end=100, time_elapsed=100;
-int lb_regress_value=0, lb_rpm=0, rb_regress_value=0, rb_rpm=0;
-int lf_regress_value=0, lf_rpm=0, rf_regress_value=0, rf_rpm=0;
-float lf_pulses_per_second,lb_pulses_per_second,rf_pulses_per_second,rb_pulses_per_second;
-float lb_target_speed, rb_target_speed, lf_target_speed, rf_target_speed;
 volatile int direction;
 int getRPM(long time_elapsed, long pulses);
 
 void setPinAsOpenDrain(char port, int pin, int output);
-void HallSensorA();
-void HallSensorB();
-void HallSensorC();
+void LFHallSensorA(), LFHallSensorB(), LFHallSensorC(),
+     LBHallSensorA(), LBHallSensorB(), LBHallSensorC(),
+     RFHallSensorA(), RFHallSensorB(), RFHallSensorC(),
+     RBHallSensorA(), RBHallSensorB(), RBHallSensorC();
 
 /**
  * Serial structs and function signatures. Could we make these into a library pls
@@ -135,9 +130,21 @@ void setup() {
   RBservo.attach(RB_SERVO_PIN);
   RFservo.attach(RF_SERVO_PIN);
 
-  attachInterrupt(LB_MOTOR_HALL_A, HallSensorA, CHANGE);
-  attachInterrupt(LB_MOTOR_HALL_B, HallSensorB, CHANGE);
-  attachInterrupt(LB_MOTOR_HALL_C, HallSensorC, CHANGE);
+  attachInterrupt(LF_MOTOR_HALL_A, LFHallSensorA, CHANGE);
+  attachInterrupt(LF_MOTOR_HALL_B, LFHallSensorB, CHANGE);
+  attachInterrupt(LF_MOTOR_HALL_C, LFHallSensorC, CHANGE);
+
+  attachInterrupt(LB_MOTOR_HALL_A, LBHallSensorA, CHANGE);
+  attachInterrupt(LB_MOTOR_HALL_B, LBHallSensorB, CHANGE);
+  attachInterrupt(LB_MOTOR_HALL_C, LBHallSensorC, CHANGE);
+
+  attachInterrupt(RB_MOTOR_HALL_A, RBHallSensorA, CHANGE);
+  attachInterrupt(RB_MOTOR_HALL_B, RBHallSensorB, CHANGE);
+  attachInterrupt(RB_MOTOR_HALL_C, RBHallSensorC, CHANGE);
+
+  attachInterrupt(RF_MOTOR_HALL_A, RFHallSensorA, CHANGE);
+  attachInterrupt(RF_MOTOR_HALL_B, RFHallSensorB, CHANGE);
+  attachInterrupt(RF_MOTOR_HALL_C, RFHallSensorC, CHANGE);
   
   // Lock motors and get ready to go
   LBservo.writeMicroseconds(1500);
@@ -148,54 +155,67 @@ void setup() {
   delay(3000);
 }
 
-int value = -100;
-int value_actual = -100;
-bool increasing = true;
-int loops = 0;
+volatile long lb_hall_a_interrupts_raw = 0;
+volatile long lb_hall_b_interrupts_raw = 0;
+volatile long lb_hall_c_interrupts_raw = 0;
+
+volatile long lf_hall_a_interrupts_raw = 0;
+volatile long lf_hall_b_interrupts_raw = 0;
+volatile long lf_hall_c_interrupts_raw = 0;
+
+volatile long rb_hall_a_interrupts_raw = 0;
+volatile long rb_hall_b_interrupts_raw = 0;
+volatile long rb_hall_c_interrupts_raw = 0;
+
+volatile long rf_hall_a_interrupts_raw = 0;
+volatile long rf_hall_b_interrupts_raw = 0;
+volatile long rf_hall_c_interrupts_raw = 0;
+
+volatile int lb_direction = 1, rb_direction = 1, rf_direction = 1, lf_direction = 1;
+float lb_regress_value, lf_regress_value, rb_regress_value, rf_regress_value;
+float lb_hall_a_interrupts_per_second, rb_hall_a_interrupts_per_second,
+    rf_hall_a_interrupts_per_second, lf_hall_a_interrupts_per_second;
+
+char us_buf[20];
 float speeds[4];
 char buf[17];
-volatile long lb_hall_a_interrupts_raw = 0;
-volatile unsigned long lb_hall_b_interrupts_raw = 0;
-volatile unsigned long lb_hall_c_interrupts_raw = 0;
 
-volatile unsigned long lf_hall_a_interrupts_raw = 0;
-volatile unsigned long lf_hall_b_interrupts_raw = 0;
-volatile unsigned long lf_hall_c_interrupts_raw = 0;
-
-volatile unsigned long rb_hall_a_interrupts_raw = 0;
-volatile unsigned long rb_hall_b_interrupts_raw = 0;
-volatile unsigned long rb_hall_c_interrupts_raw = 0;
-
-volatile unsigned long rf_hall_a_interrupts_raw = 0;
-volatile unsigned long rf_hall_b_interrupts_raw = 0;
-volatile unsigned long rf_hall_c_interrupts_raw = 0;
-
-volatile int lb_moving_clockwise = 1;
-int regress_value;
-int lb_hall_a_interrupts_per_second;
-int interrupts_per_second[4];
-int rpm;
 float lb_new_us, lf_new_us, rb_new_us, rf_new_us, lb_prev_us=1500, lf_prev_us=1500, rb_prev_us=1500, rf_prev_us=1500;
-char us_buf[20];
+unsigned long integration_period_start, integration_period_end;
+long time_elapsed;
+float lb_target_speed, rb_target_speed, lf_target_speed, rf_target_speed;
+float filtered_lb_target_speed, filtered_rb_target_speed, filtered_lf_target_speed, filtered_rf_target_speed;
+int filtered_lb_us, filtered_lf_us, filtered_rb_us, filtered_rf_us;
+
+int loops = 0;
+bool lb_leap_up=false, lb_leap_down=false, rb_leap_up=false, rb_leap_down=false,
+     rf_leap_up=false, rf_leap_down=false, lf_leap_up=false, lf_leap_down=false;
 
 void loop() {
   // put your main code here, to run repeatedly:
 
-    integration_period_start = millis();
+  integration_period_start = millis();
   delay(100);
-
-  // noInterrupts();
   integration_period_end = millis();
+
   time_elapsed = integration_period_end - integration_period_start;
-  // Serial.println(lb_hall_a_smooth_interrupt_count);
+
   lb_hall_a_interrupts_per_second = lb_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
-  regress_value = (int) (lb_hall_a_interrupts_per_second - 24.995f) / 30.178f;
-  rpm = map(regress_value, -100, 100, -4300, 4300);
+  lb_regress_value = (lb_hall_a_interrupts_per_second - 24.995f) / 30.178f;
+
+  rb_hall_a_interrupts_per_second = rb_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
+  rb_regress_value = (rb_hall_a_interrupts_per_second - 24.995f) / 30.178f;
+
+  lf_hall_a_interrupts_per_second = lf_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
+  lf_regress_value = (lf_hall_a_interrupts_per_second - 24.995f) / 30.178f;
+
+  rf_hall_a_interrupts_per_second = rf_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
+  rf_regress_value = (rf_hall_a_interrupts_per_second - 24.995f) / 30.178f;
 
   lb_hall_a_interrupts_raw = 0;
-  
-  interrupts_per_second[0] = lb_hall_a_interrupts_per_second;
-  // interrupts();
+  rb_hall_a_interrupts_raw = 0;
+  lf_hall_a_interrupts_raw = 0;
+  rf_hall_a_interrupts_raw = 0;
 
   /**
    * Get new commands from main computer, and send the actual speed
@@ -208,64 +228,209 @@ void loop() {
 
        //const size_t payload_size = strlen(buffer); //DOESN'T WORK IF THERE ARE ZEROs BECAUSE IT'S CONSIDERED A NULL CHARACTER
 
-       memcpy(&speeds, buffer+1, 16);
+       memcpy(speeds, buffer+1, 16);
 
        lb_target_speed = speeds[0];
-       rb_target_speed = speeds[1]; 
-       lf_target_speed = speeds[2];
+       lf_target_speed = speeds[1]; 
+       rb_target_speed = speeds[2];
        rf_target_speed = speeds[3];
 
        delay(100);
 
        buf[0] = '1';
 
-       memcpy(buf+1, speeds, 16); 
+       memcpy(buf+1, speeds, 16);
 
        SerialAPI::send_bytes('0', buf, 17);
 
-      lb_new_us = (1500.0f + 4.0f * lb_target_speed);
-      lf_new_us = (1500.0f + 4.0f * lf_target_speed);
-      rb_new_us = (1500.0f + 4.0f * rb_target_speed);
-      rf_new_us = (1500.0f + 4.0f * rf_target_speed);
-
       us_buf[0] = '1';
-      memcpy(us_buf+1, &lb_new_us, 4);
-      memcpy(us_buf+5, &lf_new_us, 4);
-      memcpy(us_buf+9, &rb_new_us, 4);
-      memcpy(us_buf+13, &rf_new_us, 4);
-      SerialAPI::send_bytes('0', us_buf, 17); 
+      memcpy(us_buf+1, &lb_regress_value, 4);
+      memcpy(us_buf+5, &rb_regress_value, 4);
+      memcpy(us_buf+9, &lf_regress_value, 4);
+      memcpy(us_buf+13, &rf_regress_value, 4);
+      SerialAPI::send_bytes('0', us_buf, 17);
 
-      delay(300);
-
-      if(lb_new_us != lb_prev_us) LBservo.writeMicroseconds((int) lb_new_us);
-      if(lf_new_us != lf_prev_us) LFservo.writeMicroseconds((int) lf_new_us);
-      if(rb_new_us != rb_prev_us) RBservo.writeMicroseconds((int) rb_new_us);
-      if(rf_new_us != rf_prev_us) RFservo.writeMicroseconds((int) rf_new_us);
-
-      lb_prev_us = lb_new_us;
-      lf_prev_us = lf_new_us;
-      rb_prev_us = rb_new_us;
-      rf_prev_us = rf_new_us;
+      delay(300); 
 
   }  
 
   // Max forward speed is 1900us, max backward speed is 1100us
+  
+//   // If there is a big difference between current and target speeds, accel slowly
+//   filtered_lb_target_speed = lb_target_speed;
+//   filtered_rb_target_speed = rb_target_speed;
+//   filtered_lf_target_speed = lf_target_speed;
+//   filtered_rf_target_speed = rf_target_speed;
+
+// ///////////////////////////////////////////////////////////////////////////
+
+//   if( (lb_target_speed - lb_regress_value) > 20){
+//     lb_leap_up = true;
+//     lb_leap_down = false;
+//     filtered_lb_target_speed = lb_regress_value;
+//   }
+
+//   if( (lb_target_speed - lb_regress_value) < -20){
+//     lb_leap_down = true;
+//     lb_leap_up = false;
+//     filtered_lb_target_speed = lb_regress_value;
+//   }
+
+//   if(lb_leap_up && (loops % 3 == 0) ){
+//     filtered_lb_target_speed++;
+
+//   }else if(lb_leap_down && (loops % 3 == 0) ){
+//     filtered_lb_target_speed--;
+//   }
+
+// /////////////////////////////////////////////////////////////////////////
+
+//   if( (lf_target_speed - lf_regress_value) > 20){
+//     lf_leap_up = true;
+//     lf_leap_down = false;
+//     filtered_lf_target_speed = lf_regress_value;
+//   }
+
+//   if( (lf_target_speed - lf_regress_value) < -20){
+//     lf_leap_down = true;
+//     lf_leap_up = false;
+//     filtered_lf_target_speed = lf_regress_value;
+//   }
+
+//   if(lf_leap_up && (loops % 3 == 0) ){
+//     filtered_lf_target_speed++;
+
+//   }else if(lf_leap_down && (loops % 3 == 0) ){
+//     filtered_lf_target_speed--;
+//   }
+
+// //////////////////////////////////////////////////////////////////////////
+
+//   if( (rb_target_speed - rb_regress_value) > 20){
+//     rb_leap_up = true;
+//     rb_leap_down = false;
+//     filtered_rb_target_speed = rb_regress_value;
+//   }
+
+//   if( (rb_target_speed - rb_regress_value) < -20){
+//     rb_leap_down = true;
+//     rb_leap_up = false;
+//     filtered_rb_target_speed = rb_regress_value;
+//   }
+
+//   if(rb_leap_up && (loops % 3 == 0) ){
+//     filtered_rb_target_speed++;
+
+//   }else if(rb_leap_down && (loops % 3 == 0) ){
+//     filtered_rb_target_speed--;
+//   }
+
+// /////////////////////////////////////////////////////////////////////////
+
+//   if( (rf_target_speed - rf_regress_value) > 20){
+//     rf_leap_up = true;
+//     rf_leap_down = false;
+//     filtered_rf_target_speed = rf_regress_value;
+//   }
+
+//   if( (rf_target_speed - rf_regress_value) < -20){
+//     rf_leap_down = true;
+//     rf_leap_up = false;
+//     filtered_rf_target_speed = rf_regress_value;
+//   }
+
+//   if(rf_leap_up && (loops % 3 == 0) ){
+//     filtered_rf_target_speed++;
+
+//   }else if(rf_leap_down && (loops % 3 == 0) ){
+//     filtered_rf_target_speed--;
+//   }
+
+// //////////////////////////////////////////////////////////////////////////
+
+  lb_new_us = (1500.0f + 4.0f * lb_target_speed);
+  lf_new_us = (1500.0f + 4.0f * lf_target_speed);
+  rb_new_us = (1500.0f + 4.0f * rb_target_speed);
+  rf_new_us = (1500.0f + 4.0f * rf_target_speed);
+
+  if(lb_new_us != lb_prev_us) LBservo.writeMicroseconds((int) lb_new_us);
+  if(lf_new_us != lf_prev_us) LFservo.writeMicroseconds((int) lf_new_us);
+  if(rb_new_us != rb_prev_us) RBservo.writeMicroseconds((int) rb_new_us);
+  if(rf_new_us != rf_prev_us) RFservo.writeMicroseconds((int) rf_new_us);
+
+  lb_prev_us = lb_new_us;
+  lf_prev_us = lf_new_us;
+  rb_prev_us = rb_new_us;
+  rf_prev_us = rf_new_us;
+
+  loops++;
 
 }
 
-void HallSensorA() {        
-  direction = (digitalRead(LB_MOTOR_HALL_A) == digitalRead(LB_MOTOR_HALL_B)) ? CW : CCW;   
-  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + direction; 
+void LFHallSensorA() {        
+  lf_direction = (digitalRead(LF_MOTOR_HALL_A) == digitalRead(LF_MOTOR_HALL_B)) ? CW : CCW;   
+  lf_hall_a_interrupts_raw = lf_hall_a_interrupts_raw + lf_direction; 
 }
 
-void HallSensorB() {
-  direction = (digitalRead(LB_MOTOR_HALL_B) == digitalRead(LB_MOTOR_HALL_C)) ? CW : CCW;
-  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + direction; 
+void LFHallSensorB() {
+  lf_direction = (digitalRead(LF_MOTOR_HALL_B) == digitalRead(LF_MOTOR_HALL_C)) ? CW : CCW;
+  lf_hall_a_interrupts_raw = lf_hall_a_interrupts_raw + lf_direction; 
 }
 
-void HallSensorC() {
-  direction = (digitalRead(LB_MOTOR_HALL_C) == digitalRead(LB_MOTOR_HALL_A)) ? CW : CCW;
-  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + direction; 
+void LFHallSensorC() {
+  lf_direction = (digitalRead(LF_MOTOR_HALL_C) == digitalRead(LF_MOTOR_HALL_A)) ? CW : CCW;
+  lf_hall_a_interrupts_raw = lf_hall_a_interrupts_raw + lf_direction; 
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
+void LBHallSensorA() {        
+  lb_direction = (digitalRead(LB_MOTOR_HALL_A) == digitalRead(LB_MOTOR_HALL_B)) ? CW : CCW;   
+  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + lb_direction; 
+}
+
+void LBHallSensorB() {
+  lb_direction = (digitalRead(LB_MOTOR_HALL_B) == digitalRead(LB_MOTOR_HALL_C)) ? CW : CCW;
+  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + lb_direction; 
+}
+
+void LBHallSensorC() {
+  lb_direction = (digitalRead(LB_MOTOR_HALL_C) == digitalRead(LB_MOTOR_HALL_A)) ? CW : CCW;
+  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + lb_direction; 
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
+void RBHallSensorA() {        
+  lb_direction = (digitalRead(RB_MOTOR_HALL_A) == digitalRead(RB_MOTOR_HALL_B)) ? CW : CCW;   
+  lb_hall_a_interrupts_raw = lb_hall_a_interrupts_raw + lb_direction; 
+}
+
+void RBHallSensorB() {
+  rb_direction = (digitalRead(RB_MOTOR_HALL_B) == digitalRead(RB_MOTOR_HALL_C)) ? CW : CCW;
+  rb_hall_a_interrupts_raw = rb_hall_a_interrupts_raw + rb_direction; 
+}
+
+void RBHallSensorC() {
+  rb_direction = (digitalRead(RB_MOTOR_HALL_C) == digitalRead(RB_MOTOR_HALL_A)) ? CW : CCW;
+  rb_hall_a_interrupts_raw = rb_hall_a_interrupts_raw + rb_direction; 
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
+void RFHallSensorA() {        
+  rf_direction = (digitalRead(RF_MOTOR_HALL_A) == digitalRead(RF_MOTOR_HALL_B)) ? CW : CCW;   
+  rf_hall_a_interrupts_raw = rf_hall_a_interrupts_raw + rf_direction; 
+}
+
+void RFHallSensorB() {
+  rf_direction = (digitalRead(RF_MOTOR_HALL_B) == digitalRead(RF_MOTOR_HALL_C)) ? CW : CCW;
+  rf_hall_a_interrupts_raw = rf_hall_a_interrupts_raw + rf_direction; 
+}
+
+void RFHallSensorC() {
+  rf_direction = (digitalRead(RF_MOTOR_HALL_C) == digitalRead(RF_MOTOR_HALL_A)) ? CW : CCW;
+  rf_hall_a_interrupts_raw = rf_hall_a_interrupts_raw + rf_direction; 
 }
 
 void setPinAsOpenDrain(char port, int pin, int output){
