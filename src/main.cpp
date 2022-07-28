@@ -67,7 +67,7 @@ int lower_carousel_rpm = 40;
 
 char buffer[SERIAL_RX_BUFFER_SIZE];
 float received_data[4];
-char temp_arr[4];
+char temp_chr;
 bool wantClawState;
 bool wantShutdown;
 bool clawState;
@@ -87,7 +87,6 @@ void setPinAsOpenDrain(char port, int pin, int output);
 
 
 void setup() {
-  // put your setup code here, to run once:
   SerialAPI::init(5, 9600);
 
   // Set PB6 up for open-drain operation and wait while the
@@ -95,9 +94,7 @@ void setup() {
   Claw.attach(CLAW_SERVO_PIN);
   Claw.writeMicroseconds(1635);
   clawState = true;
-  delay(1000);
   setPinAsOpenDrain('B', 6, 1);
-  delay(3000);
 
   UpperCarousel.setEnableActiveState(LOW);
   LowerCarousel.setEnableActiveState(LOW);
@@ -122,48 +119,26 @@ void setup() {
   attachInterrupt(UPPER_CAROUSEL_NFAULT, upperCarouselFaultISR, GPIO_FALLING_EDGE);
   attachInterrupt(LOWER_CAROUSEL_NFAULT, lowerCarouselFaultISR, GPIO_FALLING_EDGE);
 
-  delay(1000);
-
 }
 
 void loop() {
-
-  delay(100);
-
-  // if(UPPER_CAROUSEL_FAULT){
-  //   Serial.println("Stepper at D6 has encountered a fault condition. System cannot continue until fault condition is resolved.");
-  // }
-
-  // if(LOWER_CAROUSEL_FAULT){
-  //   Serial.println("Stepper at D11 has encountered a fault condition. System cannot continue until fault condition is resolved.");
-  // }
-
-
-  while(UPPER_CAROUSEL_FAULT || LOWER_CAROUSEL_FAULT){
-
-    // Busy spin and try to see if the fault condition resolves on its own
-    if(digitalRead(UPPER_CAROUSEL_NFAULT) == HIGH && digitalRead(LOWER_CAROUSEL_NFAULT) == HIGH){
-      UPPER_CAROUSEL_FAULT = false;
-      LOWER_CAROUSEL_FAULT = false;
-      break;
-    }
-
-  }
 
   if(SerialAPI::update()){
     memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
     int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
     memcpy(received_data, buffer+1, 16);
-    memcpy(temp_arr, &(received_data[0]), 4);
-    wantClawState = (bool)(temp_arr[0] & 1<<2);
-    wantShutdown = (bool)(temp_arr[0] & 1<<5);
+    memcpy(&temp_chr, &(received_data[0]), 1);
+    wantClawState = (bool)(temp_chr & 1<<2);
+    wantShutdown = (bool)(temp_chr & 1<<5);
     scom_desired_speed = received_data[1];
     step1_inc_angle = received_data[2];
     step2_inc_angle = received_data[3];
 
     if(!wantShutdown){
-      UpperCarousel.rotate(step1_inc_angle);
-      LowerCarousel.rotate(step2_inc_angle);
+      UPPER_CAROUSEL_FAULT = !digitalRead(UPPER_CAROUSEL_NFAULT);
+      LOWER_CAROUSEL_FAULT = !digitalRead(LOWER_CAROUSEL_NFAULT);
+      if(!UPPER_CAROUSEL_FAULT) UpperCarousel.rotate(step1_inc_angle);
+      if(!LOWER_CAROUSEL_FAULT) LowerCarousel.rotate(step2_inc_angle);
 
       if(wantClawState == true && clawState == false){
         Claw.writeMicroseconds(1635);
@@ -210,9 +185,9 @@ void loop() {
       scom_speed = 0;
     }
     char send_buf = 0;
-    send_buf += ((char) clawState) << 2;
-    send_buf += ((char) UPPER_CAROUSEL_FAULT) << 4;
-    send_buf += ((char) LOWER_CAROUSEL_FAULT) << 5;
+    send_buf |= ((char) clawState) << 2;
+    send_buf |= ((char) UPPER_CAROUSEL_FAULT) << 4;
+    send_buf |= ((char) LOWER_CAROUSEL_FAULT) << 5;
     SerialAPI::send_bytes('2', &send_buf, 1);
   }
 }
