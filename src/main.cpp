@@ -107,7 +107,7 @@ volatile int rf_cur_speed = 1500;
 
 // the setup routine runs once when you press reset:
 void setup() {           
-  SerialAPI::init('1', 9600);    
+  SerialAPI::init('1', 460800);    
   setPinAsOpenDrain('B', 4, 1);
   setPinAsOpenDrain('B', 5, 1);
   setPinAsOpenDrain('B', 6, 1);
@@ -166,7 +166,7 @@ void setup() {
   while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER4)){}
   TimerConfigure(TIMER4_BASE, TIMER_CFG_A_PERIODIC);
   TimerIntRegister(TIMER4_BASE, TIMER_A, AccelInt);
-  TimerLoadSet(TIMER4_BASE, TIMER_A, 4000);
+  TimerLoadSet(TIMER4_BASE, TIMER_A, SysCtlClockGet() / 5);
   TimerEnable(TIMER4_BASE, TIMER_A);
   IntEnable(INT_TIMER4A);
   TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
@@ -372,41 +372,41 @@ void AccelInt(){
   TimerIntClear(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
 
   //lb
-  if(lb_new_us > lb_cur_speed){
-    lb_increment++;
+  if(lb_new_us - lb_cur_speed > 5){
+    lb_increment += 5;
   }
-  else if(lb_new_us < lb_cur_speed){
-    lb_increment--;
+  else if(lb_new_us - lb_cur_speed < -5){
+    lb_increment-= 5;
   }else{
     lb_increment = 0;
   }
 
   //lf
-  if(lf_new_us > lf_cur_speed){
-    lf_increment++;
+  if(lf_new_us - lf_cur_speed > 5){
+    lf_increment += 5;
   }
-  else if(lf_new_us < lf_cur_speed){
-    lf_increment--;
+  else if(lf_new_us - lf_cur_speed < -5){
+    lf_increment -= 5;
   }else{
     lf_increment = 0;
   }
 
   //rb
-  if(rb_new_us > rb_cur_speed){
-    rb_increment ++;
+  if(rb_new_us - rb_cur_speed > 5){
+    rb_increment += 5;
   }
-  else if(rb_new_us < rb_cur_speed){
-    rb_increment--;
+  else if(rb_new_us - rb_cur_speed < -5){
+    rb_increment -= 5;
   }else{
     rb_increment = 0;
   }
 
   //rf
-  if(rf_new_us > rf_cur_speed){
-    rf_increment++;
+  if(rf_new_us - rf_cur_speed > 5){
+    rf_increment += 5;
   }
-  else if(rf_new_us < rf_cur_speed){
-    rf_increment--;
+  else if(rf_new_us - rf_cur_speed < -5){
+    rf_increment -= 5;
   }else{
     rf_increment = 0;
   }
