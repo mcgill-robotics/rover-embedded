@@ -1,22 +1,3 @@
-/*
- * ---[STEPPER UNIT TEST PINOUT]---
- * 
- * PE1 - notFAULT1: High when Stepper #1 is not in a fault condition
- * PE0 - notFAULT2: High when Stepper #2 is not in a fault condition
- * 
- * PD2 - STEPPER1_DIR: Stepper #1 will change direction on the rising edge of this pin.
- * PD3 - STEPPER1_STEP: Stepper #1 will advance one step on the rising edge of this pin.
- * PD1 - STEPPER1_ENABLE: Stepper #1 is enabled when this pin is low.
- * 
- * PF0 - CLAW_SERVO: PWM pin to control the claw
- * 
- * PC4 - LOWER_CAROUSEL_DIR: Stepper #2 will change direction on the rising edge of this pin.
- * PC5 - LOWER_CAROUSEL_STEP: Stepper #2 will advance one step on the rising edge of this pin.
- * PC6 - LOWER_CAROUSEL_ENABLE: Stepper #2 is enabled when this pin is low.
- * 
- * Either these or whichever pinout is more convenient
- * 
-  */
 #include <Arduino.h>
 #include "BasicStepperDriver.h"
 #include <Servo.h>
@@ -29,27 +10,39 @@
 #include <wiring_private.h>
 #include <Rover_SerialAPI.h>
 
-#define MOTOR_STEPS 200
 
-// Upper stepper faster than lower. Upper stepper is 75 RPM.
+// Serial defines
+#define SERIAL_RX_BUFFER_SIZE 64
+#define SERIAL_TX_BUFFER_SIZE 17
+#define SCIENCE_SYSTEM_ID '5'
+
+// Stepper and servo properties
 #define MICROSTEPS 16
 #define ANGLE_PER_STEP 1.8
 #define CLAW_MAX_CLOSED_US 1635
 #define CLAW_MAX_OPEN_US 2000
-#define SERIAL_RX_BUFFER_SIZE 64
+#define UPPER_CAROUSEL_RPM 75
+#define LOWER_CAROUSEL_RPM 40
+#define MOTOR_STEPS 200
 
+// Stepper wiggle constants
+#define UPPER_CAROUSEL_WIGGLE_ANGLE 30
+#define UPPER_CAROUSEL_WIGGLE_COUNT 10
+#define UPPER_CAROUSEL_WIGGLE_DELAY_MS 25
+#define LOWER_CAROUSEL_WIGGLE_ANGLE 15
+#define LOWER_CAROUSEL_WIGGLE_COUNT 10
+#define LOWER_CAROUSEL_WIGGLE_DELAY_MS 50
+
+// Pins
 #define UPPER_CAROUSEL_DIR PD_2
 #define UPPER_CAROUSEL_STEP PD_3
 #define UPPER_CAROUSEL_ENABLE PD_1
 #define UPPER_CAROUSEL_NFAULT PE_1
-
 #define CURRENT_SENSE_PIN PD_0
 #define CURRENT_NFAULT_PIN PE_2
-
 #define CLAW_SERVO_PIN PB_6
 #define SOCOM_DIR PA_2
 #define SOCOM_PWM PD_7
-
 #define LOWER_CAROUSEL_DIR PC_4
 #define LOWER_CAROUSEL_STEP PC_5
 #define LOWER_CAROUSEL_ENABLE PC_6
@@ -57,142 +50,142 @@
 
 volatile bool UPPER_CAROUSEL_FAULT = false;
 volatile bool LOWER_CAROUSEL_FAULT = false;
+int upper_carousel_forward = 1;
+int lower_carousel_forward = 1;
 
 BasicStepperDriver UpperCarousel(MOTOR_STEPS, UPPER_CAROUSEL_DIR, UPPER_CAROUSEL_STEP, UPPER_CAROUSEL_ENABLE);
 BasicStepperDriver LowerCarousel(MOTOR_STEPS, LOWER_CAROUSEL_DIR, LOWER_CAROUSEL_STEP, LOWER_CAROUSEL_ENABLE);
 Servo Claw;
 
-int upper_carousel_rpm = 75;
-int lower_carousel_rpm = 40;
+// Serial buffers and variables
+static char rx_buffer[SERIAL_RX_BUFFER_SIZE];
+static char tx_buffer[SERIAL_TX_BUFFER_SIZE];
+float ctl_floats[4];
 
-char buffer[SERIAL_RX_BUFFER_SIZE];
-float received_data[4];
-char temp_chr;
-bool wantClawState;
-bool wantShutdown;
-bool clawState;
-float scom_speed = 0;
-float scom_desired_speed;
-int scom_real_speed = 0;
-int scom_desired_real_speed;
-float step1_inc_angle;
-float step2_inc_angle;
-#define SPEED_DEADBAND 1
-#define MOTOR_ACCEL_DELAY_MS 10
+// We're also going to need shutdown command, I remembered what it was for...
+float gripperState, shutdownState, upper_stepper_increment, lower_stepper_increment, scom_speed,
+      upper_carousel_wiggle, lower_carousel_wiggle, gripperTestVar;
 
-// Function signatures, ignore pls
 void upperCarouselFaultISR();
 void lowerCarouselFaultISR();
 void setPinAsOpenDrain(char port, int pin, int output);
 
-
 void setup() {
-  SerialAPI::init(5, 9600);
-
-  // Set PB6 up for open-drain operation and wait while the
-  // register changes are committed to IO pins
+  // put your setup code here, to run once:
+  SerialAPI::init(SCIENCE_SYSTEM_ID, 9600);
   Claw.attach(CLAW_SERVO_PIN);
-  Claw.writeMicroseconds(1635);
-  clawState = true;
-  setPinAsOpenDrain('B', 6, 1);
-
   UpperCarousel.setEnableActiveState(LOW);
-  LowerCarousel.setEnableActiveState(LOW);
-  UpperCarousel.begin(upper_carousel_rpm, MICROSTEPS);
-  LowerCarousel.begin(lower_carousel_rpm, MICROSTEPS);
-
-  // Energize coils, uncomment when you connect the motor
+  UpperCarousel.begin(UPPER_CAROUSEL_RPM, MICROSTEPS);
   UpperCarousel.disable();
+
+  LowerCarousel.setEnableActiveState(LOW);
+  LowerCarousel.begin(LOWER_CAROUSEL_RPM, MICROSTEPS);
   LowerCarousel.disable();
 
-  // Input pullups for interrupt pins are very important!
   pinMode(UPPER_CAROUSEL_NFAULT, INPUT);
   pinMode(LOWER_CAROUSEL_NFAULT, INPUT);
 
   pinMode(SOCOM_DIR, OUTPUT);
   pinMode(SOCOM_PWM, OUTPUT);
 
-  analogReadResolution(12);
-
-  
-  // Attach interrupts to falling edges of the notFAULT pins to handle fault conditions
   attachInterrupt(UPPER_CAROUSEL_NFAULT, upperCarouselFaultISR, GPIO_FALLING_EDGE);
   attachInterrupt(LOWER_CAROUSEL_NFAULT, lowerCarouselFaultISR, GPIO_FALLING_EDGE);
 
+  setPinAsOpenDrain('B', 6, 1);
 }
 
 void loop() {
+  if(UPPER_CAROUSEL_FAULT || LOWER_CAROUSEL_FAULT){
+    // What to do in this situation? Any data to send back to main PC?
+  }
+
+  // Busy spin and try to see if the fault condition resolves on its own
+  while(UPPER_CAROUSEL_FAULT || LOWER_CAROUSEL_FAULT){
+    if(digitalRead(UPPER_CAROUSEL_NFAULT) == HIGH && digitalRead(LOWER_CAROUSEL_NFAULT) == HIGH){
+      UPPER_CAROUSEL_FAULT = false;
+      LOWER_CAROUSEL_FAULT = false;
+      break;
+    }
+
+  }
 
   if(SerialAPI::update()){
-    memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
-    int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
-    memcpy(received_data, buffer+1, 16);
-    memcpy(&temp_chr, &(received_data[0]), 1);
-    wantClawState = (bool)(temp_chr & 1<<2);
-    wantShutdown = (bool)(temp_chr & 1<<5);
-    scom_desired_speed = received_data[1];
-    step1_inc_angle = received_data[2];
-    step2_inc_angle = received_data[3];
+    memset(rx_buffer, 0, SERIAL_RX_BUFFER_SIZE);
+    int cur_pack_id = SerialAPI::read_data(rx_buffer,sizeof(rx_buffer));
 
-    if(!wantShutdown){
-      UPPER_CAROUSEL_FAULT = !digitalRead(UPPER_CAROUSEL_NFAULT);
-      LOWER_CAROUSEL_FAULT = !digitalRead(LOWER_CAROUSEL_NFAULT);
-      if(!UPPER_CAROUSEL_FAULT) UpperCarousel.rotate(step1_inc_angle);
-      if(!LOWER_CAROUSEL_FAULT) LowerCarousel.rotate(step2_inc_angle);
+    memcpy(ctl_floats, rx_buffer+1, 16);  
 
-      if(wantClawState == true && clawState == false){
-        Claw.writeMicroseconds(1635);
-        clawState = true;
-      }
-      else if (wantClawState == false && clawState == true)
-      {
-        Claw.writeMicroseconds(2000);
-        clawState = false;
-      }
+    gripperState = ctl_floats[0];
+    upper_stepper_increment = ctl_floats[1];
+    lower_stepper_increment = ctl_floats[2];
+    scom_speed = ctl_floats[3];
 
-      if(abs(scom_desired_speed-scom_speed) >= SPEED_DEADBAND){
-        scom_desired_real_speed = (abs(scom_desired_speed)/100.0) * 255;
-        if((scom_speed < 0 && scom_desired_speed >= 0)||(scom_speed >= 0 && scom_desired_speed < 0)){
-          for(int i = scom_real_speed; i > -1; i--){
-            analogWrite(SOCOM_PWM, i);
-            scom_real_speed = i;
-            delay(MOTOR_ACCEL_DELAY_MS);
-          }
-          uint8_t pinSend = (scom_speed > 0) ? HIGH : LOW;
-          digitalWrite(SOCOM_DIR, pinSend);
-        }
-        if(scom_desired_real_speed > scom_real_speed){
-          for(int i = scom_real_speed; i<= scom_desired_real_speed; i++){
-            analogWrite(SOCOM_PWM, i);
-            scom_real_speed = i;
-            delay(MOTOR_ACCEL_DELAY_MS);
-          }
-        }else{
-          for(int i = scom_real_speed; i>= scom_desired_real_speed; i--){
-            analogWrite(SOCOM_PWM, i);
-            scom_real_speed = i;
-            delay(MOTOR_ACCEL_DELAY_MS);
-          }
-        }
-        scom_speed = (scom_real_speed/255.0) * 100.0;
-      }
-    }else{
-      for(int i = scom_real_speed; i > -1; i--){
-            analogWrite(SOCOM_PWM, i);
-            scom_real_speed = i;
-            delay(MOTOR_ACCEL_DELAY_MS);
-          }
-      scom_speed = 0;
-    }
-    char send_buf = 0;
-    send_buf |= ((char) clawState) << 2;
-    send_buf |= ((char) UPPER_CAROUSEL_FAULT) << 4;
-    send_buf |= ((char) LOWER_CAROUSEL_FAULT) << 5;
-    SerialAPI::send_bytes('2', &send_buf, 1);
+    (gripperState > 0.0f) ? gripperTestVar = 1.0f : gripperTestVar = 0.0f;
+
+    delay(50);
+
+    tx_buffer[0] = SCIENCE_SYSTEM_ID;
+    memcpy(tx_buffer+1, &gripperState, 4);
+    memcpy(tx_buffer+5, &upper_stepper_increment, 4);
+    memcpy(tx_buffer+9, &lower_stepper_increment, 4);
+    memcpy(tx_buffer+13, &scom_speed, 4);
+
+    SerialAPI::send_bytes('0', tx_buffer, 17);
+    delay(100);
   }
-}
 
-// --[PRINT UTILITY FUNCTIONS]--
+  if(abs(upper_stepper_increment) > 0.0f){
+    UpperCarousel.rotate(upper_stepper_increment);
+  }
+
+  if(abs(lower_stepper_increment) > 0.0f){
+    LowerCarousel.rotate(lower_stepper_increment);
+  }
+
+  if(upper_carousel_wiggle){
+    for(int i=0; i<UPPER_CAROUSEL_WIGGLE_COUNT; i++){
+      UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
+      delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
+      UpperCarousel.rotate(-2 * UPPER_CAROUSEL_WIGGLE_ANGLE);
+      delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
+      UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
+      delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
+    }
+  }
+
+  if(lower_carousel_wiggle){
+    for(int i=0; i<LOWER_CAROUSEL_WIGGLE_COUNT; i++){
+      LowerCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
+      delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
+      LowerCarousel.rotate(-2 * LOWER_CAROUSEL_WIGGLE_ANGLE);
+      delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
+      UpperCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
+      delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
+    }
+  }
+
+  (gripperState > 0.0f) ? Claw.writeMicroseconds(CLAW_MAX_OPEN_US) : Claw.writeMicroseconds(CLAW_MAX_CLOSED_US);
+
+  if(abs(scom_speed > 0.0f)){
+    UpperCarousel.disable();
+    LowerCarousel.disable();
+
+    // TODO: Put some thought as to what the motor needs to do here
+
+    UpperCarousel.enable();
+    LowerCarousel.enable();
+  }
+
+  if(shutdownState > 0.0f){
+    UpperCarousel.disable();
+    LowerCarousel.disable();
+  }else{
+    UpperCarousel.enable();
+    LowerCarousel.enable();
+  }
+
+  
+}
 
 void upperCarouselFaultISR(){
   UPPER_CAROUSEL_FAULT = true;

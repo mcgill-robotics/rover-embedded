@@ -12,10 +12,6 @@
  * - Atmel AVR446: Linear speed control of stepper motor, 2006
  */
 #include "BasicStepperDriver.h"
-#include <tm4c123gh6pm.h>
-#include "inc/hw_memmap.h"
-#include "driverlib/gpio.h"
-#include "driverlib/sysctl.h"
 
 /*
  * Basic connection: only DIR, STEP are connected.
@@ -357,7 +353,6 @@ void BasicStepperDriver::disable(void){
     if IS_CONNECTED(enable_pin){
         digitalWrite(enable_pin, (enable_active_state == HIGH) ? LOW : HIGH);
     }
-    delayMicrosTM4C(2);
 }
 
 short BasicStepperDriver::getMaxMicrostep(){
@@ -372,7 +367,7 @@ short BasicStepperDriver::getMaxMicrostep(){
  * 
  * @param n The number of microseconds that need to be delayed
  */
-void BasicStepperDriver::delayMicrosTM4C(int n)
+void BasicStepperDriver::delayMicrosTM4CTM4C(int n)
 {
     int a, b;
     for(a = 0 ; a < n; a++)

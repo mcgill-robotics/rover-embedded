@@ -46,7 +46,7 @@ public:
                 return;
             }
             // See https://www.gammon.com.au/millis
-            while (160 * micros() - start_us < delay_us);
+            while (micros() - start_us < delay_us);
         }
     }
 
