@@ -367,7 +367,7 @@ short BasicStepperDriver::getMaxMicrostep(){
  * 
  * @param n The number of microseconds that need to be delayed
  */
-void BasicStepperDriver::delayMicrosTM4CTM4C(int n)
+void BasicStepperDriver::delayMicrosTM4C(int n)
 {
     int a, b;
     for(a = 0 ; a < n; a++)
