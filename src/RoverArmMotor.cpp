@@ -78,7 +78,6 @@ void RoverArmMotor::tick(){
     // Get current angle
     adcResult = internalAveragerInstance.reading(analogRead(encoder));
     currentAngle = mapFloat((float) adcResult, MAX_ADC_VALUE, MIN_ADC_VALUE, 359.0f, 0.0f);
-    
       // Measurement deadband - ignore sub-degree noise
     if(abs(currentAngle - lastAngle) < 1.0){
         currentAngle = lastAngle;
