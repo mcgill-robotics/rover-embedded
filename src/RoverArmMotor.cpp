@@ -7,7 +7,7 @@
 // I'm very suspicious of the way I handled user defined pointers...
 
 // The motor will not move until begin() is called!
-RoverArmMotor::RoverArmMotor(int pwm_pin, int encoder_pin, int esc_type, double minimum_angle, double maximum_angle, int dir_pin)
+RoverArmMotor::RoverArmMotor(int pwm_pin, int encoder_pin, int esc_type, double minimum_angle, double maximum_angle, int dir_pin, int brake_pin)
                 :internalPIDInstance(&input, &output, &setpoint, regularKp, regularKi, regularKd, DIRECT)
                 ,internalAveragerInstance(15){
 
@@ -17,6 +17,7 @@ RoverArmMotor::RoverArmMotor(int pwm_pin, int encoder_pin, int esc_type, double 
     pwm = pwm_pin;
     dir = dir_pin;
     escType = esc_type;
+    brake = brake_pin;
     
 }
 
@@ -60,10 +61,11 @@ void RoverArmMotor::begin(double aggP, double aggI, double aggD, double regP, do
     aggressiveKd = aggD;
 
     internalPIDInstance.SetTunings(regularKp, regularKi, regularKd);
-
+    if(brake)  engageBrake();
     //initialize the multiplier bool to false and the multiplier to 1. 
     wrist_waist = false; 
-    multiplier = 1;
+    //multiplier = 1;
+    gearRatio = 1;
 
 }
 
@@ -76,12 +78,13 @@ void RoverArmMotor::tick(){
     // Get current angle
     adcResult = internalAveragerInstance.reading(analogRead(encoder));
     currentAngle = mapFloat((float) adcResult, MAX_ADC_VALUE, MIN_ADC_VALUE, 359.0f, 0.0f);
-    input = currentAngle;
-
+    
       // Measurement deadband - ignore sub-degree noise
     if(abs(currentAngle - lastAngle) < 1.0){
         currentAngle = lastAngle;
     }
+
+    input = currentAngle;
 
     // Compute distance, retune PID if necessary. Less aggressive tuning params for small errors
     // Find the shortest from the current position to the set point
@@ -135,10 +138,12 @@ void RoverArmMotor::tick(){
     
 }
 
-bool RoverArmMotor::setMultiplierBool(bool mult, int value){
+bool RoverArmMotor::setMultiplierBool(bool mult, double ratio){
     wrist_waist = mult; 
-    multiplier = value; 
-    return true; 
+    gearRatio = ratio; 
+    //a bit redundant but just a sanity check of a second getter method
+    if(getRatio() == ratio) return true; 
+    return false; 
 }
 
 // For display purposes
@@ -160,13 +165,25 @@ int RoverArmMotor::getDirection(){
     return (digitalRead(dir) == HIGH) ? FWD : REV;
 }
 
-void RoverArmMotor::setGearRatio(double ratio){
-    gearRatio = ratio;
-}
+// void RoverArmMotor::setGearRatio(double ratio){
+//     gearRatio = ratio;
+// }
 
 void RoverArmMotor::setAngleLimits(double lowest, double highest){
     lowestAngle = lowest * gearRatio;
     highestAngle = highest * gearRatio;
+}
+
+void RoverArmMotor::disengageBrake(){
+    if(brake != 0){
+      digitalWrite(brake, LOW);  
+    }
+}
+
+void RoverArmMotor::engageBrake(){
+    if(brake != 0){
+       digitalWrite(brake, HIGH); 
+    }
 }
 
 double RoverArmMotor::getCurrentAngle(){
@@ -179,6 +196,10 @@ double RoverArmMotor::getCurrentOutput(){
 
 double RoverArmMotor::mapFloat(float x, float in_min, float in_max, float out_min, float out_max){
     return (double) ((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min);
+}
+
+double RoverArmMotor::getRatio(){
+    return gearRatio;
 }
 
 void RoverArmMotor::WatchdogISR(){

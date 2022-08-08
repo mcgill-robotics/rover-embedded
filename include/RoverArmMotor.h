@@ -18,24 +18,27 @@ class RoverArmMotor{
         #define REV -1
 
         RoverArmMotor(int pwm_pin, int encoder_pin, int esc_type, double minimum_angle, 
-                      double maximum_angle, int dir_pin);
+                      double maximum_angle, int dir_pin, int brake_pin);
 
         // Setters for various tunable parameters of our motors
         void setAggressiveCoefficients(double P, double I, double D);
         void setRegularCoefficients(double P, double I, double D);
         void setRetuningGapLimit(int gap);
         void setAngleLimits(double lowest_angle, double highest_angle);
-        bool setMultiplierBool(bool mult, int value); 
+        bool setMultiplierBool(bool mult, double ratio); 
         bool newSetpoint(double angle);
 
         void setPIDOutputLimits(double lower_end, double upper_end);
         void setMovingAverageWindowSize(int size);
+        void disengageBrake();
+        void engageBrake();
 
         double getCurrentAngle();
         double getSetpoint();
         double getCurrentOutput();
         int getDirection();
-        void setGearRatio(double ratio);
+        double getRatio(); 
+        // void setGearRatio(double ratio);
 
         void begin(double aggP, double aggI, double aggD, double regP, double regI, double regD);
         void tick();
@@ -47,14 +50,14 @@ class RoverArmMotor{
         Servo internalServoInstance;
 
         double aggressiveKp, aggressiveKi, aggressiveKd, regularKp, regularKi, regularKd;
-        int pwm, dir, encoder;
+        int pwm, dir, encoder, brake;
         int movingAverageWindowSize;
         double lowestAngle, highestAngle;
         int escType;
         int adcResult;
         double currentAngle, lastAngle;
         bool wrist_waist; 
-        int multiplier;
+        // int multiplier;
         double input;
         double output;
         double setpoint;
