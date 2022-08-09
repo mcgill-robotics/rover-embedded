@@ -34,6 +34,25 @@
 #define FWD 1
 #define REV -1
 
+#define SERIAL_RX_BUFFER_SIZE 64
+typedef struct{
+  float b[SERIAL_RX_BUFFER_SIZE/sizeof(float)];
+  size_t count; 
+}FloatBuffer;
+
+FloatBuffer fbuf; 
+static char buffer[SERIAL_RX_BUFFER_SIZE];
+static float fbuffer[SERIAL_RX_BUFFER_SIZE];
+
+float positions[5];
+char buf[21]; 
+//TODO: add array to contain limit switch states 
+volatile float wr_position; 
+volatile float wp_position; 
+volatile float shldr_position; 
+volatile float elbw_position; 
+volatile float waist_position;
+
 // PID variables and constants
 double Setpoint, Input, Output;
 double aggKp=0.025, aggKi=0.019,  aggKd=0, elbaggKp=0.025, elbaggKi=0.019,  elbaggKd=0;
@@ -249,14 +268,44 @@ void loop() {
 
   // Reset timer here so .tick() can run
 
+  if(SerialAPI::update()){
+    memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
+    int cur_pack_id = SerialAPI::read_data(buffer, sizeof(buffer)); 
 
- Wrist_Roll.tick();
- Wrist_Pitch.tick();
- Shoulder.disengageBrake(); 
- Shoulder.tick();
- Elbow.disengageBrake();
- Elbow.tick();
- Waist.tick();
+    //is it only possible to send 4 float? or can we also send 5?
+    memcpy(positions, buffer+1, 20);
+
+    wr_position = positions[0];
+    wp_position = positions[1]; 
+    shldr_position = positions[2];
+    elbw_position = positions[3];
+    waist_position = positions[4]; 
+
+    delay(50); 
+
+    buf[0] = '1';
+    memcpy(buf+1, positions, 20); 
+    SerialAPI::send_bytes('0', buf, 21);
+    delay(100); 
+
+    //TODO: add code to send limit switch info
+  }
+  Wrist_Roll.newSetpoint((double) wr_position);
+  Wrist_Roll.tick();
+
+  Wrist_Pitch.newSetpoint((double) wp_position);
+  Wrist_Pitch.tick();
+
+  Shoulder.newSetpoint((double) shldr_position);
+  Shoulder.disengageBrake(); 
+  Shoulder.tick();
+
+  Elbow.newSetpoint((double) elbw_position);
+  Elbow.disengageBrake();
+  Elbow.tick();
+
+  Waist.newSetpoint((double) waist_position);  
+  Waist.tick();
 }
 
 
