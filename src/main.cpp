@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include "driverlib/sysctl.h"
 #include "driverlib/watchdog.h"
+#include <Rover_Limits.h>
 
 #define HIGHEST_ANGLE_VOLTAGE 3850
 #define ZERO_POINT 200
@@ -30,6 +31,16 @@
 
 #define WAIST_PWM PB_7
 #define WAIST_ENCODER PB_1
+
+#define OUT_PIN PB_2
+#define CLR_PIN PB_0
+#define S1_PIN PA_3
+#define S0_PIN PA_2
+#define CLK_PIN PF_0
+#define SR_PIN PF_4
+#define EX1_PIN PB_0
+#define EX2_PIN PB_0
+
 
 #define FWD 1
 #define REV -1
@@ -63,6 +74,7 @@ RoverArmMotor Shoulder(SHLDR_PWM, SHLDR_ENCODER, BLUE_ROBOTICS, 5.0, 141.0, 0, S
 RoverArmMotor Elbow(EBLW_PWM, EBLW_ENCODER, BLUE_ROBOTICS, 5.0, 141.0, 0, EBLW_BRAKE);
 RoverArmMotor Waist(WAIST_PWM, WAIST_ENCODER, BLUE_ROBOTICS, 5.0, 141.0, 0, 0);
 //RoverArmMotor Claw(CLAW_PWM, 0, BLUE_ROBOTICS, 5.0, 141.0, CLAW_DIR, 0);
+Rover_Limits Limits(OUT_PIN, CLR_PIN, S1_PIN, S0_PIN, CLK_PIN, SR_PIN, EX1_PIN, EX2_PIN);
 
 void ConnectionLostISR();
 
@@ -77,6 +89,7 @@ void setup() {
   Elbow.begin(aggKp, aggKi, aggKd, regKp, regKi, regKd);
   Waist.begin(aggKp, aggKi, aggKd, regKp, regKi, regKd);
   //Claw.begin(aggKp, aggKi, aggKd, regKp, regKi, regKd);
+  Limits.init();
 
   // Wrist_Roll.setMultiplierBool(true, 1);
   // Wrist_Pitch.setMultiplierBool(false, 1);
