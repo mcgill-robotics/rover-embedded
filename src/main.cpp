@@ -166,7 +166,7 @@ void setup() {
   while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER4)){}
   TimerConfigure(TIMER4_BASE, TIMER_CFG_A_PERIODIC);
   TimerIntRegister(TIMER4_BASE, TIMER_A, AccelInt);
-  TimerLoadSet(TIMER4_BASE, TIMER_A, SysCtlClockGet() / 5);
+  TimerLoadSet(TIMER4_BASE, TIMER_A, SysCtlClockGet());
   TimerEnable(TIMER4_BASE, TIMER_A);
   IntEnable(INT_TIMER4A);
   TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
@@ -267,13 +267,11 @@ void loop() {
        memcpy(buf+1, speeds, 16);
 
        SerialAPI::send_bytes('0', buf, 17);
-      
-      float potat = (float) lf_increment;
 
       us_buf[0] = '1';
       memcpy(us_buf+1, &lb_regress_value, 4);
       memcpy(us_buf+5, &rb_regress_value, 4);
-      memcpy(us_buf+9, &potat, 4);
+      memcpy(us_buf+9, &lf_regress_value, 4);
       memcpy(us_buf+13, &rf_regress_value, 4);
       SerialAPI::send_bytes('0', us_buf, 17);
 
@@ -372,40 +370,40 @@ void AccelInt(){
   TimerIntClear(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
 
   //lb
-  if(lb_new_us - lb_cur_speed > 5){
+  if(lb_new_us - lb_cur_speed > 10){
     lb_increment += 5;
   }
-  else if(lb_new_us - lb_cur_speed < -5){
+  else if(lb_new_us - lb_cur_speed < -10){
     lb_increment-= 5;
   }else{
     lb_increment = 0;
   }
 
   //lf
-  if(lf_new_us - lf_cur_speed > 5){
+  if(lf_new_us - lf_cur_speed > 10){
     lf_increment += 5;
   }
-  else if(lf_new_us - lf_cur_speed < -5){
+  else if(lf_new_us - lf_cur_speed < -10){
     lf_increment -= 5;
   }else{
     lf_increment = 0;
   }
 
   //rb
-  if(rb_new_us - rb_cur_speed > 5){
+  if(rb_new_us - rb_cur_speed > 10){
     rb_increment += 5;
   }
-  else if(rb_new_us - rb_cur_speed < -5){
+  else if(rb_new_us - rb_cur_speed < -10){
     rb_increment -= 5;
   }else{
     rb_increment = 0;
   }
 
   //rf
-  if(rf_new_us - rf_cur_speed > 5){
+  if(rf_new_us - rf_cur_speed > 10){
     rf_increment += 5;
   }
-  else if(rf_new_us - rf_cur_speed < -5){
+  else if(rf_new_us - rf_cur_speed < -10){
     rf_increment -= 5;
   }else{
     rf_increment = 0;
