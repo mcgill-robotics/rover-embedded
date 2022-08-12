@@ -107,7 +107,7 @@ volatile int rf_cur_speed = 1500;
 
 // the setup routine runs once when you press reset:
 void setup() {           
-  SerialAPI::init('1', 460800);    
+  SerialAPI::init('1', 9600);    
   setPinAsOpenDrain('B', 4, 1);
   setPinAsOpenDrain('B', 5, 1);
   setPinAsOpenDrain('B', 6, 1);
