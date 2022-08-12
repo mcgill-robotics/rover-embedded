@@ -174,11 +174,19 @@ void setup() {
   IntEnable(INT_TIMER4A);
   TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
 
-  // Watchdog timer for connection loss, set it for two seconds
+  // Watchdog timer for connection loss, set it for 2 seconds
   SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG0);
   WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
   WatchdogIntRegister(WATCHDOG0_BASE, &ConnectionLostISR);
   WatchdogEnable(WATCHDOG0_BASE);
+
+  // Watchdog timer to reset MCU if serial connection isn't recovered in 10 seconds.
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG1);
+
+  // Configure this timer to reset the system on its second interrupt (10 seconds)
+  WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
+  WatchdogResetEnable(WATCHDOG1_BASE);
+  WatchdogEnable(WATCHDOG1_BASE);
 
   // delay(3000);
 }
@@ -200,8 +208,6 @@ volatile long rf_hall_b_interrupts_raw = 0;
 volatile long rf_hall_c_interrupts_raw = 0;
 
 volatile int lb_direction = 1, rb_direction = 1, rf_direction = 1, lf_direction = 1;
-
-volatile bool kicked_once;
 
 float lb_regress_value, lf_regress_value, rb_regress_value, rf_regress_value;
 float lb_hall_a_interrupts_per_second, rb_hall_a_interrupts_per_second,
@@ -260,39 +266,36 @@ void loop() {
    */
    if(SerialAPI::update()){
 
-      // Feed the watchdog
-       WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
+    // Feed watchdog as soon as serial communication is established
+    WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
+    WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
 
-       memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
-       int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
+    memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
+    int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
 
-       //const size_t payload_size = strlen(buffer); //DOESN'T WORK IF THERE ARE ZEROs BECAUSE IT'S CONSIDERED A NULL CHARACTER
+    memcpy(speeds, buffer+1, 16);
 
-       memcpy(speeds, buffer+1, 16);
+    lb_target_speed = speeds[0];
+    lf_target_speed = speeds[1]; 
+    rb_target_speed = speeds[2];
+    rf_target_speed = speeds[3];
 
-       lb_target_speed = speeds[0];
-       lf_target_speed = speeds[1]; 
-       rb_target_speed = speeds[2];
-       rf_target_speed = speeds[3];
+    delay(50);
 
-       delay(50);
+    buf[0] = '1';
 
-       buf[0] = '1';
+    memcpy(buf+1, speeds, 16);
 
-       memcpy(buf+1, speeds, 16);
+    SerialAPI::send_bytes('0', buf, 17);
 
-       SerialAPI::send_bytes('0', buf, 17);
+    us_buf[0] = '1';
+    memcpy(us_buf+1, &lb_regress_value, 4);
+    memcpy(us_buf+5, &rb_regress_value, 4);
+    memcpy(us_buf+9, &lf_regress_value, 4);
+    memcpy(us_buf+13, &rf_regress_value, 4);
+    SerialAPI::send_bytes('0', us_buf, 17);
 
-      float t1, t2, t3, t4;
-
-      us_buf[0] = '1';
-      memcpy(us_buf+1, &lb_regress_value, 4);
-      memcpy(us_buf+5, &rb_regress_value, 4);
-      memcpy(us_buf+9, &lf_regress_value, 4);
-      memcpy(us_buf+13, &rf_regress_value, 4);
-      SerialAPI::send_bytes('0', us_buf, 17);
-
-      delay(100); 
+    delay(100); 
 
   }  
 
