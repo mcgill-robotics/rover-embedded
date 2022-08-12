@@ -10,6 +10,7 @@
 #include <driverlib/timer.h>
 #include "inc/hw_ints.h"
 #include "driverlib/interrupt.h"
+#include "driverlib/watchdog.h"
 
 /*
  * PINOUT NOTE:
@@ -71,6 +72,7 @@ void LFHallSensorA(), LFHallSensorB(), LFHallSensorC(),
      LBHallSensorA(), LBHallSensorB(), LBHallSensorC(),
      RFHallSensorA(), RFHallSensorB(), RFHallSensorC(),
      RBHallSensorA(), RBHallSensorB(), RBHallSensorC();
+void ConnectionLostISR();
 
 /**
  * Serial structs and function signatures. Could we make these into a library pls
@@ -162,6 +164,7 @@ void setup() {
   RBservo.writeMicroseconds(1500);
   RFservo.writeMicroseconds(1500);
 
+  // Timer interrupts for acceleration control
   SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
   while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER4)){}
   TimerConfigure(TIMER4_BASE, TIMER_CFG_A_PERIODIC);
@@ -170,6 +173,12 @@ void setup() {
   TimerEnable(TIMER4_BASE, TIMER_A);
   IntEnable(INT_TIMER4A);
   TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
+
+  // Watchdog timer for connection loss, set it for two seconds
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG0);
+  WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
+  WatchdogIntRegister(WATCHDOG0_BASE, &ConnectionLostISR);
+  WatchdogEnable(WATCHDOG0_BASE);
 
   // delay(3000);
 }
@@ -191,6 +200,9 @@ volatile long rf_hall_b_interrupts_raw = 0;
 volatile long rf_hall_c_interrupts_raw = 0;
 
 volatile int lb_direction = 1, rb_direction = 1, rf_direction = 1, lf_direction = 1;
+
+volatile bool kicked_once;
+
 float lb_regress_value, lf_regress_value, rb_regress_value, rf_regress_value;
 float lb_hall_a_interrupts_per_second, rb_hall_a_interrupts_per_second,
     rf_hall_a_interrupts_per_second, lf_hall_a_interrupts_per_second;
@@ -247,6 +259,9 @@ void loop() {
    * 
    */
    if(SerialAPI::update()){
+
+      // Feed the watchdog
+       WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
 
        memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
        int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
@@ -412,6 +427,17 @@ void AccelInt(){
   }
 
   
+}
+
+// When connection is lost, set acceleration target to 0 for a smooth stop.
+// Resetting microcontroller isn't feasible because that will force the motors
+// to stop with a jerk, with unknown results.
+void ConnectionLostISR(){
+  WatchdogIntClear(WATCHDOG0_BASE);
+  rf_new_us = 0;
+  lf_new_us = 0;
+  rb_new_us = 0;
+  lb_new_us = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
