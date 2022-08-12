@@ -32,14 +32,16 @@
 #define WAIST_PWM PB_7
 #define WAIST_ENCODER PB_1
 
-#define OUT_PIN PB_2
-#define CLR_PIN PB_0
-#define S1_PIN PA_3
-#define S0_PIN PA_2
-#define CLK_PIN PF_0
-#define SR_PIN PF_4
-#define EX1_PIN PB_0
-#define EX2_PIN PB_0
+#define LS_1 PB_2
+#define LS_2 PB_0
+#define LS_3 PA_3
+#define LS_4 PA_2
+#define LS_5 PF_0
+#define LS_6 PF_4
+#define LS_7 PB_0
+#define LS_8 PB_0
+#define LS_9 PB_5
+#define LS_10 PA_5
 
 
 #define FWD 1
@@ -74,7 +76,7 @@ RoverArmMotor Shoulder(SHLDR_PWM, SHLDR_ENCODER, BLUE_ROBOTICS, 5.0, 141.0, 0, S
 RoverArmMotor Elbow(EBLW_PWM, EBLW_ENCODER, BLUE_ROBOTICS, 5.0, 141.0, 0, EBLW_BRAKE);
 RoverArmMotor Waist(WAIST_PWM, WAIST_ENCODER, BLUE_ROBOTICS, 5.0, 141.0, 0, 0);
 //RoverArmMotor Claw(CLAW_PWM, 0, BLUE_ROBOTICS, 5.0, 141.0, CLAW_DIR, 0);
-Rover_Limits Limits(OUT_PIN, CLR_PIN, S1_PIN, S0_PIN, CLK_PIN, SR_PIN, EX1_PIN, EX2_PIN);
+Rover_Limits Limits(LS_1, LS_2, LS_3, LS_4, LS_5, LS_6, LS_7, LS_8, LS_9, LS_10);
 
 void ConnectionLostISR();
 
@@ -133,151 +135,151 @@ void loop() {
   // goto label;
 
   // Get new setpoint from serial - will be gone when the serial bridge is up
-  if(Serial.available()){
-    Serial.println("Press A to change setpoint for wrist pitch");
-    Serial.println("Press S to see encoder position for wrist pitch");
-    Serial.println("Press D to change setpoint for wrist roll");
-    Serial.println("Press F to see the encoder position for wrist roll");
-    Serial.println("Press G to change setpoint for shoulder");
-    Serial.println("Press H to see the encoder position for shoulder");
-    Serial.println("Press J to change setpoint for elbow");
-    Serial.println("Press K to see the encoder position for elbow");
-    Serial.println("Press W to change setpoint for waist");
-    Serial.println("Press E to see the encoder position for waist");
+  // if(Serial.available()){
+  //   Serial.println("Press A to change setpoint for wrist pitch");
+  //   Serial.println("Press S to see encoder position for wrist pitch");
+  //   Serial.println("Press D to change setpoint for wrist roll");
+  //   Serial.println("Press F to see the encoder position for wrist roll");
+  //   Serial.println("Press G to change setpoint for shoulder");
+  //   Serial.println("Press H to see the encoder position for shoulder");
+  //   Serial.println("Press J to change setpoint for elbow");
+  //   Serial.println("Press K to see the encoder position for elbow");
+  //   Serial.println("Press W to change setpoint for waist");
+  //   Serial.println("Press E to see the encoder position for waist");
 
-    if(Serial.available()){
+  //   if(Serial.available()){
 
-      bool valid_input = false;
+  //     bool valid_input = false;
 
-      while(!valid_input){
-        if(Serial.available()){
-          int input_character = Serial.read();
+  //     while(!valid_input){
+  //       if(Serial.available()){
+  //         int input_character = Serial.read();
 
-          switch(input_character){
-            case 'A':
-              Serial.print("Enter new setpoint for wrist pitch: ");
-              while(true){
-                if(Serial.available()){
-                  double set = (double) Serial.parseFloat();
-                Wrist_Pitch.newSetpoint(set); 
-                  delay(1000);
-                  break;
-                }
+  //         switch(input_character){
+  //           case 'A':
+  //             Serial.print("Enter new setpoint for wrist pitch: ");
+  //             while(true){
+  //               if(Serial.available()){
+  //                 double set = (double) Serial.parseFloat();
+  //               Wrist_Pitch.newSetpoint(set); 
+  //                 delay(1000);
+  //                 break;
+  //               }
 
 
-              }
-              Serial.println();
-              Serial.print("New setpoint for wrist pitch: ");Serial.println(Wrist_Pitch.getSetpoint());
-              valid_input = true;
-              break;
+  //             }
+  //             Serial.println();
+  //             Serial.print("New setpoint for wrist pitch: ");Serial.println(Wrist_Pitch.getSetpoint());
+  //             valid_input = true;
+  //             break;
             
-            case 'S':
-              Serial.print("Current encoder position for wrist pitch: ");
-              Serial.println(Wrist_Pitch.getCurrentAngle());
-              delay(200);
-              valid_input = true;
-              break;
+  //           case 'S':
+  //             Serial.print("Current encoder position for wrist pitch: ");
+  //             Serial.println(Wrist_Pitch.getCurrentAngle());
+  //             delay(200);
+  //             valid_input = true;
+  //             break;
             
-            case 'D':
-              Serial.print("Enter new setpoint for wrist roll: ");
-              while(true){
-                if(Serial.available()){
-                  double set = (double) Serial.parseFloat();
-                Wrist_Roll.newSetpoint(set); 
-                  delay(1000);
-                  break;
-                }
+  //           case 'D':
+  //             Serial.print("Enter new setpoint for wrist roll: ");
+  //             while(true){
+  //               if(Serial.available()){
+  //                 double set = (double) Serial.parseFloat();
+  //               Wrist_Roll.newSetpoint(set); 
+  //                 delay(1000);
+  //                 break;
+  //               }
 
 
-              }
-              Serial.println();
-              Serial.print("New setpoint for wrist roll: ");Serial.println(Wrist_Roll.getSetpoint());
-              valid_input = true;
-              break;
+  //             }
+  //             Serial.println();
+  //             Serial.print("New setpoint for wrist roll: ");Serial.println(Wrist_Roll.getSetpoint());
+  //             valid_input = true;
+  //             break;
 
-            case 'F':
-              Serial.print("Current encoder position for wrist roll: ");
-              Serial.println(Wrist_Roll.getCurrentAngle());
-              delay(200);
-              valid_input = true;
-              break;
+  //           case 'F':
+  //             Serial.print("Current encoder position for wrist roll: ");
+  //             Serial.println(Wrist_Roll.getCurrentAngle());
+  //             delay(200);
+  //             valid_input = true;
+  //             break;
             
-            case 'G':
-              Serial.print("Enter new setpoint for shoulder: ");
-              while(true){
-                if(Serial.available()){
-                  double set = (double) Serial.parseFloat();
-                  Shoulder.newSetpoint(set); 
-                  delay(1000);
-                  break;
-                }
+  //           case 'G':
+  //             Serial.print("Enter new setpoint for shoulder: ");
+  //             while(true){
+  //               if(Serial.available()){
+  //                 double set = (double) Serial.parseFloat();
+  //                 Shoulder.newSetpoint(set); 
+  //                 delay(1000);
+  //                 break;
+  //               }
 
 
-              }
-              Serial.println();
-              Serial.print("New setpoint for shoulder: ");Serial.println(Shoulder.getSetpoint());
-              valid_input = true;
-              break;
+  //             }
+  //             Serial.println();
+  //             Serial.print("New setpoint for shoulder: ");Serial.println(Shoulder.getSetpoint());
+  //             valid_input = true;
+  //             break;
 
-            case 'H':
-              Serial.print("Current encoder position for wrist roll: ");
-              Serial.println(Shoulder.getCurrentAngle());
-              delay(200);
-              valid_input = true;
-              break;
+  //           case 'H':
+  //             Serial.print("Current encoder position for wrist roll: ");
+  //             Serial.println(Shoulder.getCurrentAngle());
+  //             delay(200);
+  //             valid_input = true;
+  //             break;
             
-            case 'J':
-              Serial.print("Enter new setpoint for elbow: ");
-              while(true){
-                if(Serial.available()){
-                  double set = (double) Serial.parseFloat();
-                  Elbow.newSetpoint(set); 
-                  delay(1000);
-                  break;
-                }
+  //           case 'J':
+  //             Serial.print("Enter new setpoint for elbow: ");
+  //             while(true){
+  //               if(Serial.available()){
+  //                 double set = (double) Serial.parseFloat();
+  //                 Elbow.newSetpoint(set); 
+  //                 delay(1000);
+  //                 break;
+  //               }
 
 
-              }
-              Serial.println();
-              Serial.print("New setpoint for elbow: ");Serial.println(Elbow.getSetpoint());
-              valid_input = true;
-              break;
+  //             }
+  //             Serial.println();
+  //             Serial.print("New setpoint for elbow: ");Serial.println(Elbow.getSetpoint());
+  //             valid_input = true;
+  //             break;
 
-            case 'K':
-              Serial.print("Current encoder position for elbow: ");
-              Serial.println(Elbow.getCurrentAngle());
-              delay(200);
-              valid_input = true;
-              break;
+  //           case 'K':
+  //             Serial.print("Current encoder position for elbow: ");
+  //             Serial.println(Elbow.getCurrentAngle());
+  //             delay(200);
+  //             valid_input = true;
+  //             break;
 
-            case 'W':
-              Serial.print("Enter new setpoint for waist: ");
-              while(true){
-                if(Serial.available()){
-                  double set = (double) Serial.parseFloat();
-                  Waist.newSetpoint(set); 
-                  delay(1000);
-                  break;
-                }
+  //           case 'W':
+  //             Serial.print("Enter new setpoint for waist: ");
+  //             while(true){
+  //               if(Serial.available()){
+  //                 double set = (double) Serial.parseFloat();
+  //                 Waist.newSetpoint(set); 
+  //                 delay(1000);
+  //                 break;
+  //               }
 
 
-              }
-              Serial.println();
-              Serial.print("New setpoint for waist: ");Serial.println(Waist.getSetpoint());
-              valid_input = true;
-              break;
+  //             }
+  //             Serial.println();
+  //             Serial.print("New setpoint for waist: ");Serial.println(Waist.getSetpoint());
+  //             valid_input = true;
+  //             break;
 
-            case 'E':
-              Serial.print("Current encoder position for waist: ");
-              Serial.println(Waist.getCurrentAngle());
-              delay(200);
-              valid_input = true;
-              break;
-          }
-        }
-      } 
-    }
-  }
+  //           case 'E':
+  //             Serial.print("Current encoder position for waist: ");
+  //             Serial.println(Waist.getCurrentAngle());
+  //             delay(200);
+  //             valid_input = true;
+  //             break;
+  //         }
+  //       }
+  //     } 
+  //   }
+  // }
 
   // Reset timer here so .tick() can run
 
