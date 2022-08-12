@@ -268,6 +268,8 @@ void loop() {
 
        SerialAPI::send_bytes('0', buf, 17);
 
+      float t1, t2, t3, t4;
+
       us_buf[0] = '1';
       memcpy(us_buf+1, &lb_regress_value, 4);
       memcpy(us_buf+5, &rb_regress_value, 4);
