@@ -22,9 +22,10 @@ class Rover_Limits
         uint8_t LS_8;
         uint8_t LS_9; 
         uint8_t LS_10; 
-        bool limit_arr[10];
+        bool limit_arr[10] = {false};
         const int clk_delay = 1;
         void pulsePin(uint8_t pin, bool reversed = false);
+        void ls_int();
 
 };
 #endif

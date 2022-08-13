@@ -98,7 +98,7 @@ namespace SerialAPI
                     // Shift the array over so that it starts at the correct start byte
                     memmove(data_buffer + start_offset, data_buffer, MAX_PACKET_SIZE - start_offset);
                     // the start offset basically tells us how many bytes extra were read so we need to move it back since we shift the whole data buffer over
-                    data_offset -= start_offset;
+                    data_offset -= start_offset; 
                 }
             }
 
@@ -210,7 +210,7 @@ namespace SerialAPI
         output_buffer[2] = len;
 
         memcpy(output_buffer + DATA_SEGMENT_OFFSET, buff, len);
-        output_buffer[packet_size - 1] = crc8ccitt(output_buffer + DATA_SEGMENT_OFFSET, len); 
+        output_buffer[packet_size - 1] = crc8ccitt(output_buffer + DATA_SEGMENT_OFFSET, len);         
 
         SerialInterface.write(output_buffer, packet_size);
         return true;

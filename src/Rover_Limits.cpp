@@ -18,12 +18,7 @@ Rover_Limits::Rover_Limits(uint8_t LS_1, uint8_t LS_2, uint8_t LS_3,uint8_t LS_4
     this->LS_7 = LS_7;
     this->LS_8 = LS_8; 
     this->LS_9 = LS_9; 
-    this->LS_10 = LS_10; 
-    limit_arr = {false};
-    // for(int i = 0; i <= 9; i++){
-    //     limit_arr[i] = false;
-    // }
-
+    this->LS_10 = LS_10;
 }
 
 bool Rover_Limits::init(){
@@ -78,25 +73,25 @@ bool Rover_Limits::updateValues(){
     return true;
 }
 
-void Rover_Limits::pulsePin(uint8_t pin, bool reversed){
-    if(reversed){
-        digitalWrite(pin, LOW);
-    }
-    else{
-        digitalWrite(pin, HIGH);
-    }
-    delay(clk_delay);
-    if(pin != _clk_pin){
-        pulsePin(_clk_pin);
-    }
-    if(reversed){
-        digitalWrite(pin, HIGH);
-    }
-    else{
-        digitalWrite(pin, LOW);
-    }
-    delay(clk_delay);
-}
+// void Rover_Limits::pulsePin(uint8_t pin, bool reversed){
+//     if(reversed){
+//         digitalWrite(pin, LOW);
+//     }
+//     else{
+//         digitalWrite(pin, HIGH);
+//     }
+//     delay(clk_delay);
+//     if(pin != _clk_pin){
+//         pulsePin(_clk_pin);
+//     }
+//     if(reversed){
+//         digitalWrite(pin, HIGH);
+//     }
+//     else{
+//         digitalWrite(pin, LOW);
+//     }
+//     delay(clk_delay);
+// }
 
 void Rover_Limits::ls_int(){
     // bool prev_limit_arr[10];
