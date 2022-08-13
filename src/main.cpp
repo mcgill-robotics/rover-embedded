@@ -10,7 +10,7 @@
 #include <driverlib/timer.h>
 #include "inc/hw_ints.h"
 #include "driverlib/interrupt.h"
-#include "driverlib/watchdog.h"
+//#include "driverlib/watchdog.h"
 
 /*
  * PINOUT NOTE:
@@ -72,7 +72,7 @@ void LFHallSensorA(), LFHallSensorB(), LFHallSensorC(),
      LBHallSensorA(), LBHallSensorB(), LBHallSensorC(),
      RFHallSensorA(), RFHallSensorB(), RFHallSensorC(),
      RBHallSensorA(), RBHallSensorB(), RBHallSensorC();
-void ConnectionLostISR();
+//void ConnectionLostISR();
 
 /**
  * Serial structs and function signatures. Could we make these into a library pls
@@ -95,6 +95,7 @@ volatile int lb_cur_speed = 1500;
 volatile int lf_cur_speed = 1500;
 volatile int rb_cur_speed = 1500;
 volatile int rf_cur_speed = 1500;
+char buf[17];
 #define ID 'a'
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)  \
@@ -109,54 +110,54 @@ volatile int rf_cur_speed = 1500;
 
 // the setup routine runs once when you press reset:
 void setup() {           
-  SerialAPI::init('1', 460800);    
+  SerialAPI::init('1', 9600);    
   setPinAsOpenDrain('B', 4, 1);
   setPinAsOpenDrain('B', 5, 1);
   setPinAsOpenDrain('B', 6, 1);
   setPinAsOpenDrain('B', 7, 1);
 
-  pinMode(LB_MOTOR_HALL_A, INPUT);
-  pinMode(LB_MOTOR_HALL_B, INPUT);
-  pinMode(LB_MOTOR_HALL_C, INPUT);
-  pinMode(RB_MOTOR_HALL_A, INPUT);
-  pinMode(RB_MOTOR_HALL_B, INPUT);
-  pinMode(RB_MOTOR_HALL_C, INPUT);
-  pinMode(LF_MOTOR_HALL_A, INPUT);
-  pinMode(LF_MOTOR_HALL_B, INPUT);
-  pinMode(LF_MOTOR_HALL_C, INPUT);
-  pinMode(RF_MOTOR_HALL_A, INPUT);
-  pinMode(RF_MOTOR_HALL_B, INPUT);
-  pinMode(RF_MOTOR_HALL_C, INPUT);
+  // pinMode(LB_MOTOR_HALL_A, INPUT);
+  // pinMode(LB_MOTOR_HALL_B, INPUT);
+  // pinMode(LB_MOTOR_HALL_C, INPUT);
+  // pinMode(RB_MOTOR_HALL_A, INPUT);
+  // pinMode(RB_MOTOR_HALL_B, INPUT);
+  // pinMode(RB_MOTOR_HALL_C, INPUT);
+  // pinMode(LF_MOTOR_HALL_A, INPUT);
+  // pinMode(LF_MOTOR_HALL_B, INPUT);
+  // pinMode(LF_MOTOR_HALL_C, INPUT);
+  // pinMode(RF_MOTOR_HALL_A, INPUT);
+  // pinMode(RF_MOTOR_HALL_B, INPUT);
+  // pinMode(RF_MOTOR_HALL_C, INPUT);
 
-  pinMode(LB_CURRENT_SENSE_PIN, INPUT);
-  pinMode(RB_CURRENT_SENSE_PIN, INPUT);
-  pinMode(LF_CURRENT_SENSE_PIN, INPUT);
-  pinMode(RF_CURRENT_SENSE_PIN, INPUT);
-  pinMode(LB_CURRENT_NFAULT_PIN, INPUT);
-  pinMode(RB_CURRENT_NFAULT_PIN, INPUT);
-  pinMode(LF_CURRENT_NFAULT_PIN, INPUT);
-  pinMode(RF_CURRENT_NFAULT_PIN, INPUT);
+  // pinMode(LB_CURRENT_SENSE_PIN, INPUT);
+  // pinMode(RB_CURRENT_SENSE_PIN, INPUT);
+  // pinMode(LF_CURRENT_SENSE_PIN, INPUT);
+  // pinMode(RF_CURRENT_SENSE_PIN, INPUT);
+  // pinMode(LB_CURRENT_NFAULT_PIN, INPUT);
+  // pinMode(RB_CURRENT_NFAULT_PIN, INPUT);
+  // pinMode(LF_CURRENT_NFAULT_PIN, INPUT);
+  // pinMode(RF_CURRENT_NFAULT_PIN, INPUT);
 
   LBservo.attach(LB_SERVO_PIN);
   LFservo.attach(LF_SERVO_PIN);
   RBservo.attach(RB_SERVO_PIN);
   RFservo.attach(RF_SERVO_PIN);
 
-  attachInterrupt(LF_MOTOR_HALL_A, LFHallSensorA, CHANGE);
-  attachInterrupt(LF_MOTOR_HALL_B, LFHallSensorB, CHANGE);
-  attachInterrupt(LF_MOTOR_HALL_C, LFHallSensorC, CHANGE);
+  // attachInterrupt(LF_MOTOR_HALL_A, LFHallSensorA, CHANGE);
+  // attachInterrupt(LF_MOTOR_HALL_B, LFHallSensorB, CHANGE);
+  // attachInterrupt(LF_MOTOR_HALL_C, LFHallSensorC, CHANGE);
 
-  attachInterrupt(LB_MOTOR_HALL_A, LBHallSensorA, CHANGE);
-  attachInterrupt(LB_MOTOR_HALL_B, LBHallSensorB, CHANGE);
-  attachInterrupt(LB_MOTOR_HALL_C, LBHallSensorC, CHANGE);
+  // attachInterrupt(LB_MOTOR_HALL_A, LBHallSensorA, CHANGE);
+  // attachInterrupt(LB_MOTOR_HALL_B, LBHallSensorB, CHANGE);
+  // attachInterrupt(LB_MOTOR_HALL_C, LBHallSensorC, CHANGE);
 
-  attachInterrupt(RB_MOTOR_HALL_A, RBHallSensorA, CHANGE);
-  attachInterrupt(RB_MOTOR_HALL_B, RBHallSensorB, CHANGE);
-  attachInterrupt(RB_MOTOR_HALL_C, RBHallSensorC, CHANGE);
+  // attachInterrupt(RB_MOTOR_HALL_A, RBHallSensorA, CHANGE);
+  // attachInterrupt(RB_MOTOR_HALL_B, RBHallSensorB, CHANGE);
+  // attachInterrupt(RB_MOTOR_HALL_C, RBHallSensorC, CHANGE);
 
-  attachInterrupt(RF_MOTOR_HALL_A, RFHallSensorA, CHANGE);
-  attachInterrupt(RF_MOTOR_HALL_B, RFHallSensorB, CHANGE);
-  attachInterrupt(RF_MOTOR_HALL_C, RFHallSensorC, CHANGE);
+  // attachInterrupt(RF_MOTOR_HALL_A, RFHallSensorA, CHANGE);
+  // attachInterrupt(RF_MOTOR_HALL_B, RFHallSensorB, CHANGE);
+  // attachInterrupt(RF_MOTOR_HALL_C, RFHallSensorC, CHANGE);
   
   // Lock motors and get ready to go
   LBservo.writeMicroseconds(1500);
@@ -165,30 +166,34 @@ void setup() {
   RFservo.writeMicroseconds(1500);
 
   // Timer interrupts for acceleration control
-  SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
-  while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER4)){}
-  TimerConfigure(TIMER4_BASE, TIMER_CFG_A_PERIODIC);
-  TimerIntRegister(TIMER4_BASE, TIMER_A, AccelInt);
-  TimerLoadSet(TIMER4_BASE, TIMER_A, SysCtlClockGet());
-  TimerEnable(TIMER4_BASE, TIMER_A);
-  IntEnable(INT_TIMER4A);
-  TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
+  // SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
+  // while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER4)){}
+  // TimerConfigure(TIMER4_BASE, TIMER_CFG_A_PERIODIC);
+  // TimerIntRegister(TIMER4_BASE, TIMER_A, AccelInt);
+  // TimerLoadSet(TIMER4_BASE, TIMER_A, SysCtlClockGet());
+  // TimerEnable(TIMER4_BASE, TIMER_A);
+  // IntEnable(INT_TIMER4A);
+  // TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
 
   // Watchdog timer for connection loss, set it for 2 seconds
-  SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG0);
-  WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
-  WatchdogIntRegister(WATCHDOG0_BASE, &ConnectionLostISR);
-  WatchdogEnable(WATCHDOG0_BASE);
+  // SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG0);
+  // WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
+  // WatchdogIntRegister(WATCHDOG0_BASE, &ConnectionLostISR);
+  // WatchdogEnable(WATCHDOG0_BASE);
 
   // Watchdog timer to reset MCU if serial connection isn't recovered in 10 seconds.
-  SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG1);
+  //SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG1);
 
   // Configure this timer to reset the system on its second interrupt (10 seconds)
-  WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
-  WatchdogResetEnable(WATCHDOG1_BASE);
-  WatchdogEnable(WATCHDOG1_BASE);
+  // WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
+  // WatchdogResetEnable(WATCHDOG1_BASE);
+  // WatchdogEnable(WATCHDOG1_BASE);
 
-  // delay(3000);
+  // delay(100);
+  // float temp[4] = {0.0};
+  // buf[0] = '1';
+  // memcpy(buf+1, temp, 16);
+  // SerialAPI::send_bytes('0', buf, 17);
 }
 
 volatile long lb_hall_a_interrupts_raw = 0;
@@ -215,7 +220,6 @@ float lb_hall_a_interrupts_per_second, rb_hall_a_interrupts_per_second,
 
 char us_buf[20];
 float speeds[4];
-char buf[17];
 
 float lb_new_us, lf_new_us, rb_new_us, rf_new_us, lb_prev_us=1500, lf_prev_us=1500, rb_prev_us=1500, rf_prev_us=1500;
 unsigned long integration_period_start, integration_period_end;
@@ -224,7 +228,7 @@ float lb_target_speed, rb_target_speed, lf_target_speed, rf_target_speed;
 float filtered_lb_target_speed, filtered_rb_target_speed, filtered_lf_target_speed, filtered_rf_target_speed;
 int filtered_lb_us, filtered_lf_us, filtered_rb_us, filtered_rf_us;
 
-int loops = 0;
+//int loops = 0;
 bool lb_leap_up=false, lb_leap_down=false, rb_leap_up=false, rb_leap_down=false,
      rf_leap_up=false, rf_leap_down=false, lf_leap_up=false, lf_leap_down=false;
   
@@ -232,33 +236,33 @@ volatile int lb_increment, rb_increment, lf_increment, rf_increment;
 
 void loop() {
   // put your main code here, to run repeatedly:
-  lb_cur_speed = LBservo.readMicroseconds();
-  lf_cur_speed = LFservo.readMicroseconds();
-  rb_cur_speed = RBservo.readMicroseconds();
-  rf_cur_speed = RFservo.readMicroseconds();
+  // lb_cur_speed = LBservo.readMicroseconds();
+  // lf_cur_speed = LFservo.readMicroseconds();
+  // rb_cur_speed = RBservo.readMicroseconds();
+  // rf_cur_speed = RFservo.readMicroseconds();
 
-  integration_period_start = millis();
-  delay(100);
-  integration_period_end = millis();
+  // integration_period_start = millis();
+  // delay(100);
+  // integration_period_end = millis();
 
-  time_elapsed = integration_period_end - integration_period_start;
+  // time_elapsed = integration_period_end - integration_period_start;
 
-  lb_hall_a_interrupts_per_second = lb_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
-  lb_regress_value = (lb_hall_a_interrupts_per_second - 24.995f) / 30.178f;
+  // lb_hall_a_interrupts_per_second = lb_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
+  // lb_regress_value = (lb_hall_a_interrupts_per_second - 24.995f) / 30.178f;
 
-  rb_hall_a_interrupts_per_second = rb_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
-  rb_regress_value = (rb_hall_a_interrupts_per_second - 24.995f) / 30.178f;
+  // rb_hall_a_interrupts_per_second = rb_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
+  // rb_regress_value = (rb_hall_a_interrupts_per_second - 24.995f) / 30.178f;
 
-  lf_hall_a_interrupts_per_second = lf_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
-  lf_regress_value = (lf_hall_a_interrupts_per_second - 24.995f) / 30.178f;
+  // lf_hall_a_interrupts_per_second = lf_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
+  // lf_regress_value = (lf_hall_a_interrupts_per_second - 24.995f) / 30.178f;
 
-  rf_hall_a_interrupts_per_second = rf_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
-  rf_regress_value = (rf_hall_a_interrupts_per_second - 24.995f) / 30.178f;
+  // rf_hall_a_interrupts_per_second = rf_hall_a_interrupts_raw * (1000.0f / (float)time_elapsed);
+  // rf_regress_value = (rf_hall_a_interrupts_per_second - 24.995f) / 30.178f;
 
-  lb_hall_a_interrupts_raw = 0;
-  rb_hall_a_interrupts_raw = 0;
-  lf_hall_a_interrupts_raw = 0;
-  rf_hall_a_interrupts_raw = 0;
+  // lb_hall_a_interrupts_raw = 0;
+  // rb_hall_a_interrupts_raw = 0;
+  // lf_hall_a_interrupts_raw = 0;
+  // rf_hall_a_interrupts_raw = 0;
 
   /**
    * Get new commands from main computer, and send the actual speed
@@ -267,8 +271,8 @@ void loop() {
    if(SerialAPI::update()){
 
     // Feed watchdog as soon as serial communication is established
-    WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
-    WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
+    // WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
+    // WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
 
     memset(buffer, 0, SERIAL_RX_BUFFER_SIZE);
     int cur_pack_id = SerialAPI::read_data(buffer,sizeof(buffer));
@@ -276,11 +280,10 @@ void loop() {
     memcpy(speeds, buffer+1, 16);
 
     lb_target_speed = speeds[0];
-    lf_target_speed = speeds[1]; 
+    lf_target_speed = speeds[1] * -1; 
     rb_target_speed = speeds[2];
-    rf_target_speed = speeds[3];
-
-    delay(50);
+    rf_target_speed = speeds[3] * -1;
+    //  delay(100);
 
     buf[0] = '1';
 
@@ -288,33 +291,67 @@ void loop() {
 
     SerialAPI::send_bytes('0', buf, 17);
 
-    us_buf[0] = '1';
-    memcpy(us_buf+1, &lb_regress_value, 4);
-    memcpy(us_buf+5, &rb_regress_value, 4);
-    memcpy(us_buf+9, &lf_regress_value, 4);
-    memcpy(us_buf+13, &rf_regress_value, 4);
-    SerialAPI::send_bytes('0', us_buf, 17);
+    // us_buf[0] = '1';
+    // memcpy(us_buf+1, &lb_regress_value, 4);
+    // memcpy(us_buf+5, &rb_regress_value, 4);
+    // memcpy(us_buf+9, &lf_regress_value, 4);
+    // memcpy(us_buf+13, &rf_regress_value, 4);
+    // SerialAPI::send_bytes('0', us_buf, 17);
 
-    delay(100); 
+    // delay(100); 
 
-  }  
-
+  }
   lb_new_us = (1500.0f + 4.0f * lb_target_speed);
   lf_new_us = (1500.0f + 4.0f * lf_target_speed);
   rb_new_us = (1500.0f + 4.0f * rb_target_speed);
   rf_new_us = (1500.0f + 4.0f * rf_target_speed);
 
-  LBservo.writeMicroseconds((int) lb_cur_speed + lb_increment);
-  LFservo.writeMicroseconds((int) lf_cur_speed + lf_increment);
-  RBservo.writeMicroseconds((int) rb_cur_speed + rb_increment);
-  RFservo.writeMicroseconds((int) rf_cur_speed + rf_increment);
+  // int motorsDone = 0;
+  // int lb_dir = (lb_new_us - lb_cur_speed >= 0) ? 1 : -1;
+  // int lf_dir = (lf_new_us - lf_cur_speed >= 0) ? 1 : -1;
+  // int rb_dir = (rb_new_us - rb_cur_speed >= 0) ? 1 : -1;
+  // int rf_dir = (rf_new_us - rf_cur_speed >= 0) ? 1 : -1;
+  // for(int i = 0; i < 400; i+=5){
+  //   if(abs(lb_new_us - lb_cur_speed) > i){
+  //     LBservo.writeMicroseconds(lb_cur_speed+(i*lb_dir));
+  //     motorsDone += 1;
+  //   }
+  //   if(abs(lf_new_us - lf_cur_speed) > i){
+  //     LFservo.writeMicroseconds(lf_cur_speed+(i*lf_dir));
+  //     motorsDone += 1;
+  //   }
+  //   if(abs(rb_new_us - rb_cur_speed) > i){
+  //     RBservo.writeMicroseconds(rb_cur_speed+(i*rb_dir));
+  //     motorsDone += 1;
+  //   }
+  //   if(abs(rf_new_us - rf_cur_speed) > i){
+  //     RFservo.writeMicroseconds(rf_cur_speed+(i*rf_dir));
+  //     motorsDone += 1;
+  //   }
+  //   if(motorsDone == 0) break;
+  //   motorsDone = 0;
+  // }
 
-  lb_prev_us = lb_new_us;
-  lf_prev_us = lf_new_us;
-  rb_prev_us = rb_new_us;
-  rf_prev_us = rf_new_us;
 
-  loops++;
+  LBservo.writeMicroseconds(lb_new_us);
+  LFservo.writeMicroseconds(lf_new_us);
+  RBservo.writeMicroseconds(rb_new_us);
+  RFservo.writeMicroseconds(rf_new_us);
+  // int temp_lb = (int) lb_cur_speed + lb_increment;
+  // int temp_lf = (int) lf_cur_speed + lf_increment;
+  // int temp_rb = (int) rb_cur_speed + rb_increment;
+  // int temp_rf = (int) rf_cur_speed + rf_increment;
+  // if(!(temp_lb == 1500 && lb_increment == 0)) LBservo.writeMicroseconds((int) lb_cur_speed + lb_increment);
+  // if(!(temp_lf == 1500 && lf_increment == 0)) LFservo.writeMicroseconds((int) lf_cur_speed + lf_increment);
+  // if(!(temp_rb == 1500 && rb_increment == 0)) RBservo.writeMicroseconds((int) rb_cur_speed + rb_increment);
+  // if(!(temp_rf == 1500 && rf_increment == 0)) RFservo.writeMicroseconds((int) rf_cur_speed + rf_increment);
+
+  // lb_prev_us = lb_new_us;
+  // lf_prev_us = lf_new_us;
+  // rb_prev_us = rb_new_us;
+  // rf_prev_us = rf_new_us;
+
+  //loops++;
 
 }
 
@@ -435,13 +472,13 @@ void AccelInt(){
 // When connection is lost, set acceleration target to 0 for a smooth stop.
 // Resetting microcontroller isn't feasible because that will force the motors
 // to stop with a jerk, with unknown results.
-void ConnectionLostISR(){
-  WatchdogIntClear(WATCHDOG0_BASE);
-  rf_new_us = 0;
-  lf_new_us = 0;
-  rb_new_us = 0;
-  lb_new_us = 0;
-}
+// void ConnectionLostISR(){
+//   WatchdogIntClear(WATCHDOG0_BASE);
+//   rf_new_us = 0;
+//   lf_new_us = 0;
+//   rb_new_us = 0;
+//   lb_new_us = 0;
+// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
