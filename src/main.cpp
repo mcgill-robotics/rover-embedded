@@ -51,8 +51,8 @@ void loop() {
     memset(rx_buffer, 0, SERIAL_RX_BUFFER_SIZE);
     int cur_pack_id = SerialAPI::read_data(rx_buffer, sizeof(rx_buffer));
     memcpy(ctl_floats, rx_buffer + 1, 16);
-    arm = ctl_floats[0]; 
     dc = ctl_floats[1]; 
+    arm = ctl_floats[1]; 
     science = ctl_floats[2];
 
     (arm > 0.0f) ? Arm.turnOn() : Arm.turnOff(); 
@@ -60,7 +60,7 @@ void loop() {
     (science > 0.0f)? SCI.turnOn() : SCI.turnOff();
 
     tx_buffer[0] = '4';
-    memcpy(tx_buffer + 1, &arm, 4);
+    memcpy(tx_buffer + 1, 0, 4);
     memcpy(tx_buffer + 5, &dc, 4); 
     memcpy(tx_buffer + 9, &science, 4);
     SerialAPI::send_bytes('0', tx_buffer, 13);
