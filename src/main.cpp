@@ -9,6 +9,10 @@
 #include "driverlib/sysctl.h"
 #include <wiring_private.h>
 #include <Rover_SerialAPI.h>
+#include <driverlib/timer.h>
+#include "driverlib/interrupt.h"
+#include "inc/hw_ints.h"
+#include "driverlib/watchdog.h"
 
 
 // Serial defines
@@ -41,12 +45,30 @@
 #define CURRENT_SENSE_PIN PD_0
 #define CURRENT_NFAULT_PIN PE_2
 #define CLAW_SERVO_PIN PB_6
-#define SOCOM_DIR PA_2
-#define SOCOM_PWM PD_7
+#define SCOM_DIR PA_2
+#define SCOM_PWM PD_7
 #define LOWER_CAROUSEL_DIR PC_4
 #define LOWER_CAROUSEL_STEP PC_5
 #define LOWER_CAROUSEL_ENABLE PC_6
 #define LOWER_CAROUSEL_NFAULT PE_0
+
+// SCOM will accelerate, then keep going for this many seconds,
+// then decelerate to a rest.
+#define CONSTANT_SPEED_DURATION 2
+
+// Defines the resolution of acceleration/deceleration. New PWM
+// values are computed every 1 / CLOCK_DIV seconds.
+#define CLOCK_DIV 40
+
+// Limit motor power output by (100 * (MAX_PWM / 255) )%
+#define MAX_PWM 100
+
+#define PWM_INCREMENT 3
+
+enum ActuationStates{ACCEL_UP, DECEL_UP, CONST_UP, ACCEL_DOWN, DECEL_DOWN, CONST_DOWN, STOPPED};
+volatile int actuation_state = STOPPED;
+volatile int current_pwm_value = 0;
+volatile int coast_ticks = 0;
 
 volatile bool UPPER_CAROUSEL_FAULT = false;
 volatile bool LOWER_CAROUSEL_FAULT = false;
@@ -64,20 +86,33 @@ float ctl_floats[4];
 
 // We're also going to need shutdown command, I remembered what it was for...
 float gripperState, shutdownState, upper_stepper_increment, lower_stepper_increment, scom_speed,
-      upper_carousel_wiggle, lower_carousel_wiggle, gripperTestVar;
+      last_scom_speed, upper_carousel_wiggle, lower_carousel_wiggle, gripperTestVar;
 
 void upperCarouselFaultISR();
 void lowerCarouselFaultISR();
+void AccelISR();
 void setPinAsOpenDrain(char port, int pin, int output);
 
+volatile bool connection_lost = false;
+
 void setup() {
-  // put your setup code here, to run once:
-  SerialAPI::init(SCIENCE_SYSTEM_ID, 9600);
+  // put your setup code here, to run once: 
+
+  // Enable timer for SCOM accel control
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
+  while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER4)){}
+  TimerConfigure(TIMER4_BASE, TIMER_CFG_A_PERIODIC);
+  TimerIntRegister(TIMER4_BASE, TIMER_A, AccelISR);
+  TimerLoadSet(TIMER4_BASE, TIMER_A, SysCtlClockGet() / CLOCK_DIV);
+  TimerEnable(TIMER4_BASE, TIMER_A);
+  IntEnable(INT_TIMER4A);
+  TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
+
   Claw.attach(CLAW_SERVO_PIN);
+
   UpperCarousel.setEnableActiveState(LOW);
   UpperCarousel.begin(UPPER_CAROUSEL_RPM, MICROSTEPS);
   UpperCarousel.disable();
-
   LowerCarousel.setEnableActiveState(LOW);
   LowerCarousel.begin(LOWER_CAROUSEL_RPM, MICROSTEPS);
   LowerCarousel.disable();
@@ -85,31 +120,63 @@ void setup() {
   pinMode(UPPER_CAROUSEL_NFAULT, INPUT);
   pinMode(LOWER_CAROUSEL_NFAULT, INPUT);
 
-  pinMode(SOCOM_DIR, OUTPUT);
-  pinMode(SOCOM_PWM, OUTPUT);
+  pinMode(SCOM_DIR, OUTPUT);
+  pinMode(SCOM_PWM, OUTPUT);
 
-  attachInterrupt(UPPER_CAROUSEL_NFAULT, upperCarouselFaultISR, GPIO_FALLING_EDGE);
-  attachInterrupt(LOWER_CAROUSEL_NFAULT, lowerCarouselFaultISR, GPIO_FALLING_EDGE);
+  // Watchdog timer for connection loss, set it for 2 seconds
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG0);
+  WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
+  WatchdogIntRegister(WATCHDOG0_BASE, &ConnectionLostISR);
+  WatchdogEnable(WATCHDOG0_BASE);
+
+  // Watchdog timer to reset MCU if serial connection isn't recovered in 10 seconds.
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG1);
+
+  // Configure this timer to reset the system on its second interrupt (10 seconds)
+  WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
+  WatchdogResetEnable(WATCHDOG1_BASE);
+  WatchdogEnable(WATCHDOG1_BASE);
+
+
+  // attachInterrupt(UPPER_CAROUSEL_NFAULT, upperCarouselFaultISR, GPIO_FALLING_EDGE);
+  // attachInterrupt(LOWER_CAROUSEL_NFAULT, lowerCarouselFaultISR, GPIO_FALLING_EDGE);
 
   setPinAsOpenDrain('B', 6, 1);
 }
 
 void loop() {
+
   if(UPPER_CAROUSEL_FAULT || LOWER_CAROUSEL_FAULT){
     // What to do in this situation? Any data to send back to main PC?
   }
 
-  // Busy spin and try to see if the fault condition resolves on its own
-  while(UPPER_CAROUSEL_FAULT || LOWER_CAROUSEL_FAULT){
-    if(digitalRead(UPPER_CAROUSEL_NFAULT) == HIGH && digitalRead(LOWER_CAROUSEL_NFAULT) == HIGH){
-      UPPER_CAROUSEL_FAULT = false;
-      LOWER_CAROUSEL_FAULT = false;
-      break;
-    }
+  // // Busy spin and try to see if the fault condition resolves on its own
+  // while(UPPER_CAROUSEL_FAULT || LOWER_CAROUSEL_FAULT){
+  //   if(digitalRead(UPPER_CAROUSEL_NFAULT) == HIGH && digitalRead(LOWER_CAROUSEL_NFAULT) == HIGH){
+  //     UPPER_CAROUSEL_FAULT = false;
+  //     LOWER_CAROUSEL_FAULT = false;
+  //     break;
+  //   }
 
+  // }
+
+  // Make sure the motor transitions to the deceleration state if connection is lost,
+  // after the deceleration state it will automatically go to the stopped state
+  if(connection_lost){
+    if(actuation_state == ACCEL_UP || actuation_state == CONST_UP) {
+        actuation_state = DECEL_UP;
+    }else if(actuation_state == ACCEL_DOWN || actuation_state == CONST_DOWN){
+        actuation_state = DECEL_DOWN;
+    }
   }
 
   if(SerialAPI::update()){
+
+    // Feed watchdog as soon as serial communication is established
+    WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
+    WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
+    connection_lost = false;
+
     memset(rx_buffer, 0, SERIAL_RX_BUFFER_SIZE);
     int cur_pack_id = SerialAPI::read_data(rx_buffer,sizeof(rx_buffer));
 
@@ -124,6 +191,64 @@ void loop() {
 
     delay(50);
 
+    // Control logic for SCOM is here because it should be able to turn off steppers
+    // before anything else gets to them
+
+    bool going_up = (actuation_state == ACCEL_UP || actuation_state == CONST_UP);
+    bool going_down = (actuation_state == ACCEL_DOWN || actuation_state == CONST_DOWN);
+
+    // Only change actuation state if software sends a different command
+    if(scom_speed != last_scom_speed){
+
+      if(scom_speed == 1.0f){
+
+        // Up
+        if(going_down) {
+          actuation_state = DECEL_DOWN;
+        }else if(actuation_state == STOPPED){
+          actuation_state = ACCEL_UP;
+        }
+
+      }else if(scom_speed == 0.0f){
+
+        // Stop
+        if(going_up) {
+          actuation_state = DECEL_UP;
+        }else if(going_down){
+          actuation_state = DECEL_DOWN;
+        }
+
+      }else if(scom_speed == -1.0f){
+        
+        // Down
+        if(going_up) {
+          actuation_state = DECEL_UP;
+        }else if(actuation_state == STOPPED){
+          actuation_state = ACCEL_DOWN;
+        }
+
+      }else{
+
+        // Default to a stop if data is garbled
+        if(going_up) {
+          actuation_state = DECEL_UP;
+        }else if(going_down){
+          actuation_state = DECEL_DOWN;
+        }
+
+      }
+  }
+    scom_speed = last_scom_speed;
+    
+    // Steppers shouldn't run at the same time as SCOM, if they do,
+    // EMF badly fucks things up
+    if(actuation_state != STOPPED){
+      UpperCarousel.disable();
+      LowerCarousel.disable();
+    }
+
+
+    // Sent for board enumeration, isn't actually used by software
     tx_buffer[0] = SCIENCE_SYSTEM_ID;
     memcpy(tx_buffer+1, &gripperState, 4);
     memcpy(tx_buffer+5, &upper_stepper_increment, 4);
@@ -166,16 +291,6 @@ void loop() {
 
   (gripperState > 0.0f) ? Claw.writeMicroseconds(CLAW_MAX_OPEN_US) : Claw.writeMicroseconds(CLAW_MAX_CLOSED_US);
 
-  if(abs(scom_speed > 0.0f)){
-    UpperCarousel.disable();
-    LowerCarousel.disable();
-
-    // TODO: Put some thought as to what the motor needs to do here
-
-    UpperCarousel.enable();
-    LowerCarousel.enable();
-  }
-
   if(shutdownState > 0.0f){
     UpperCarousel.disable();
     LowerCarousel.disable();
@@ -193,6 +308,80 @@ void upperCarouselFaultISR(){
 
 void lowerCarouselFaultISR(){
   LOWER_CAROUSEL_FAULT = true;
+}
+
+void AccelISR(){
+  TimerIntClear(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
+  
+  switch(actuation_state)
+  {
+    case ACCEL_UP:
+      current_pwm_value += PWM_INCREMENT;
+      if(current_pwm_value >= MAX_PWM){
+        current_pwm_value = MAX_PWM;
+        actuation_state = CONST_UP;
+      }
+      digitalWrite(SCOM_DIR, LOW);
+      delayMicroseconds(500);
+      analogWrite(SCOM_PWM, current_pwm_value);
+      break;
+    
+
+    case CONST_UP:
+      coast_ticks++;
+      if(coast_ticks == (CONSTANT_SPEED_DURATION * CLOCK_DIV)){
+          actuation_state = DECEL_UP;
+          coast_ticks = 0;
+      }
+      break;
+    
+    case DECEL_UP:
+      current_pwm_value -= PWM_INCREMENT;
+      if(current_pwm_value <= 0){
+        current_pwm_value = 0;
+        actuation_state = STOPPED;
+      }
+      digitalWrite(SCOM_DIR, LOW);
+      delayMicroseconds(500);
+      analogWrite(SCOM_PWM, current_pwm_value);
+      break;
+    
+    case ACCEL_DOWN:
+      current_pwm_value += PWM_INCREMENT;
+      if(current_pwm_value >= MAX_PWM){
+        current_pwm_value = MAX_PWM;
+        actuation_state = CONST_DOWN;
+      }
+      digitalWrite(SCOM_DIR, HIGH);
+      delayMicroseconds(500);
+      analogWrite(SCOM_PWM, current_pwm_value);
+      break;
+    
+
+    case CONST_DOWN:
+      coast_ticks++;
+      if(coast_ticks == (CONSTANT_SPEED_DURATION * CLOCK_DIV)){
+          actuation_state = DECEL_DOWN;
+          coast_ticks = 0;
+      }
+      break;
+    
+    case DECEL_DOWN:
+      current_pwm_value -= PWM_INCREMENT;
+      if(current_pwm_value <= 0){
+        current_pwm_value = 0;
+        actuation_state = STOPPED;
+      }
+      digitalWrite(SCOM_DIR, HIGH);
+      delayMicroseconds(500);
+      analogWrite(SCOM_PWM, current_pwm_value);
+      break;
+
+  }
+}
+
+void ConnectionLostISR(){
+  connection_lost = true;
 }
 
 void setPinAsOpenDrain(char port, int pin, int output){
