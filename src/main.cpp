@@ -19,7 +19,7 @@ peripheral DC(DC_CNTR_PIN);
 peripheral SCI(SCI_CNTR_PIN);
 
 //peripheral order[] = {Arm, DC, SCI};
-void ConnectionLostISR(); 
+//void ConnectionLostISR(); 
 
 //static char* systems[3] = {"Arm System", "DC Motors", "Science System"};
 
@@ -139,6 +139,6 @@ void loop() {
 
 //this ISR will be used to turn off the arm and science module
 //if connection is lost between the main computer and the power board.
-void ConnectionLostISR(){
+// void ConnectionLostISR(){
   
-}
+// }
