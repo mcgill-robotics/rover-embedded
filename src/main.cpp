@@ -203,55 +203,55 @@ void loop() {
     bool going_up = (actuation_state == ACCEL_UP || actuation_state == CONST_UP);
     bool going_down = (actuation_state == ACCEL_DOWN || actuation_state == CONST_DOWN);
 
-    // Only change actuation state if software sends a different command
-    if(scom_speed != last_scom_speed){
+  //   // Only change actuation state if software sends a different command
+  //   if(scom_speed != last_scom_speed){
 
-      if(scom_speed == 1.0f){
+  //     if(scom_speed == 1.0f){
 
-        // Up
-        if(going_down) {
-          actuation_state = DECEL_DOWN;
-        }else if(actuation_state == STOPPED){
-          actuation_state = ACCEL_UP;
-        }
+  //       // Up
+  //       if(going_down) {
+  //         actuation_state = DECEL_DOWN;
+  //       }else if(actuation_state == STOPPED){
+  //         actuation_state = ACCEL_UP;
+  //       }
 
-      }else if(scom_speed == 0.0f){
+  //     }else if(scom_speed == 0.0f){
 
-        // Stop
-        if(going_up) {
-          actuation_state = DECEL_UP;
-        }else if(going_down){
-          actuation_state = DECEL_DOWN;
-        }
+  //       // Stop
+  //       if(going_up) {
+  //         actuation_state = DECEL_UP;
+  //       }else if(going_down){
+  //         actuation_state = DECEL_DOWN;
+  //       }
 
-      }else if(scom_speed == -1.0f){
+  //     }else if(scom_speed == -1.0f){
         
-        // Down
-        if(going_up) {
-          actuation_state = DECEL_UP;
-        }else if(actuation_state == STOPPED){
-          actuation_state = ACCEL_DOWN;
-        }
+  //       // Down
+  //       if(going_up) {
+  //         actuation_state = DECEL_UP;
+  //       }else if(actuation_state == STOPPED){
+  //         actuation_state = ACCEL_DOWN;
+  //       }
 
-      }else{
+  //     }else{
 
-        // Default to a stop if data is garbled
-        if(going_up) {
-          actuation_state = DECEL_UP;
-        }else if(going_down){
-          actuation_state = DECEL_DOWN;
-        }
+  //       // Default to a stop if data is garbled
+  //       if(going_up) {
+  //         actuation_state = DECEL_UP;
+  //       }else if(going_down){
+  //         actuation_state = DECEL_DOWN;
+  //       }
 
-      }
-  }
-    scom_speed = last_scom_speed;
+  //     }
+  // }
+  //   scom_speed = last_scom_speed;
     
-    // Steppers shouldn't run at the same time as SCOM, if they do,
-    // EMF badly fucks things up
-    if(actuation_state != STOPPED){
-      UpperCarousel.disable();
-      LowerCarousel.disable();
-    }
+  //   // Steppers shouldn't run at the same time as SCOM, if they do,
+  //   // EMF badly fucks things up
+  //   if(actuation_state != STOPPED){
+  //     UpperCarousel.disable();
+  //     LowerCarousel.disable();
+  //   }
 
 
     // Sent for board enumeration, isn't actually used by software
