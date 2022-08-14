@@ -97,6 +97,7 @@ volatile bool connection_lost = false;
 
 void setup() {
   // put your setup code here, to run once: 
+  SerialAPI::init(SCIENCE_SYSTEM_ID, 9600);
 
   // Enable timer for SCOM accel control
   SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
@@ -124,18 +125,18 @@ void setup() {
   pinMode(SCOM_PWM, OUTPUT);
 
   // Watchdog timer for connection loss, set it for 2 seconds
-  SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG0);
-  WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
-  WatchdogIntRegister(WATCHDOG0_BASE, &ConnectionLostISR);
-  WatchdogEnable(WATCHDOG0_BASE);
+  // SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG0);
+  // WatchdogReloadSet(WATCHDOG0_BASE, SysCtlClockGet() * 2);
+  // WatchdogIntRegister(WATCHDOG0_BASE, &ConnectionLostISR);
+  // WatchdogEnable(WATCHDOG0_BASE);
 
-  // Watchdog timer to reset MCU if serial connection isn't recovered in 10 seconds.
-  SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG1);
+  // // Watchdog timer to reset MCU if serial connection isn't recovered in 10 seconds.
+  // SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG1);
 
-  // Configure this timer to reset the system on its second interrupt (10 seconds)
-  WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
-  WatchdogResetEnable(WATCHDOG1_BASE);
-  WatchdogEnable(WATCHDOG1_BASE);
+  // // Configure this timer to reset the system on its second interrupt (10 seconds)
+  // WatchdogReloadSet(WATCHDOG1_BASE, SysCtlClockGet() * 5);
+  // WatchdogResetEnable(WATCHDOG1_BASE);
+  // WatchdogEnable(WATCHDOG1_BASE);
 
 
   // attachInterrupt(UPPER_CAROUSEL_NFAULT, upperCarouselFaultISR, GPIO_FALLING_EDGE);
