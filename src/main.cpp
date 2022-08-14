@@ -17,7 +17,6 @@
 
 // Serial defines
 #define SERIAL_RX_BUFFER_SIZE 64
-#define SERIAL_TX_BUFFER_SIZE 17
 #define SERIAL_TX_BUFFER_SIZE 21
 #define SCIENCE_SYSTEM_ID '5'
 
@@ -52,8 +51,6 @@
 #define LOWER_CAROUSEL_STEP PC_5
 #define LOWER_CAROUSEL_ENABLE PC_6
 #define LOWER_CAROUSEL_NFAULT PE_0
-#define UPPER_LIMIT_PIN PA_3
-#define LOWER_LIMIT_PIN PA_4
 #define UPPER_LIMIT_PIN PB_4
 #define LOWER_LIMIT_PIN PB_0
 
@@ -149,13 +146,12 @@ void setup() {
   // attachInterrupt(UPPER_CAROUSEL_NFAULT, upperCarouselFaultISR, GPIO_FALLING_EDGE);
   // attachInterrupt(LOWER_CAROUSEL_NFAULT, lowerCarouselFaultISR, GPIO_FALLING_EDGE);
 
-  setPinAsOpenDrain('B', 6, 1);
   //setPinAsOpenDrain('B', 6, 1);
-  float temp_stuff[5] = {0.0f};
-  tx_buffer[0] = SCIENCE_SYSTEM_ID;
-  memcpy(tx_buffer+1, &temp_stuff, 20);
+  // float temp_stuff[5] = {0.0f};
+  // tx_buffer[0] = SCIENCE_SYSTEM_ID;
+  // memcpy(tx_buffer+1, &temp_stuff, 20);
 
-  SerialAPI::send_bytes('0', tx_buffer, 21);
+  // SerialAPI::send_bytes('0', tx_buffer, 21);
 }
 
 void loop() {
@@ -196,12 +192,6 @@ void loop() {
     memset(rx_buffer, 0, SERIAL_RX_BUFFER_SIZE);
     int cur_pack_id = SerialAPI::read_data(rx_buffer,sizeof(rx_buffer));
 
-    memcpy(ctl_floats, rx_buffer+1, 16);
-
-    gripperState = ctl_floats[0];
-    upper_stepper_increment = ctl_floats[1];
-    lower_stepper_increment = ctl_floats[2];
-    scom_speed = ctl_floats[3];
     memcpy(ctl_floats, rx_buffer+1, 20);
     shutdownState = ctl_floats[0];
     gripperState = ctl_floats[1];
@@ -274,13 +264,6 @@ void loop() {
     // SerialAPI::send_bytes('0', tx_buffer, 17);
     // delay(100);
     // Sent for board enumeration, isn't actually used by software
-    tx_buffer[0] = SCIENCE_SYSTEM_ID;
-    memcpy(tx_buffer+1, &gripperState, 4);
-    memcpy(tx_buffer+5, &upper_stepper_increment, 4);
-    memcpy(tx_buffer+9, &lower_stepper_increment, 4);
-    memcpy(tx_buffer+13, &scom_speed, 4);
-
-    SerialAPI::send_bytes('0', tx_buffer, 17);
     // delay(100);
     memcpy(tx_buffer+1, &shutdownState, 4);
     memcpy(tx_buffer+5, &gripperState, 4);
@@ -289,7 +272,6 @@ void loop() {
     memcpy(tx_buffer+17, &scom_speed, 4);
 
     SerialAPI::send_bytes('0', tx_buffer, 21);
-    delay(100);
   }
 
   if(abs(upper_stepper_increment) > 0.0f){
