@@ -248,14 +248,13 @@ void loop() {
 
   //     }
   // }
-    scom_speed = last_scom_speed;
     
     // Steppers shouldn't run at the same time as SCOM, if they do,
     // EMF badly fucks things up
-    if(actuation_state != STOPPED){
-      UpperCarousel.disable();
-      LowerCarousel.disable();
-    }
+    // if(actuation_state != STOPPED){
+    //   UpperCarousel.disable();
+    //   LowerCarousel.disable();
+    // }
 
 
     // Sent for board enumeration, isn't actually used by software
@@ -296,6 +295,8 @@ void loop() {
       analogWrite(SCOM_PWM, 50);
     }
   }
+
+  scom_speed = last_scom_speed;
 
 
   if(upper_carousel_wiggle){
