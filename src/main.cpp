@@ -281,7 +281,7 @@ void loop() {
       analogWrite(SCOM_PWM,0);
     }
     else{
-      analogWrite(SCOM_PWM, (int) scom_speed*2.55);
+      analogWrite(SCOM_PWM, 50);
     }
   }else{
     digitalWrite(SCOM_DIR, HIGH);
@@ -289,7 +289,7 @@ void loop() {
       analogWrite(SCOM_PWM,0);
     }
     else{
-      analogWrite(SCOM_PWM, (int) scom_speed*2.55);
+      analogWrite(SCOM_PWM, 50);
     }
   }
 
