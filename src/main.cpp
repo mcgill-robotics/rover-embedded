@@ -18,6 +18,7 @@
 // Serial defines
 #define SERIAL_RX_BUFFER_SIZE 64
 #define SERIAL_TX_BUFFER_SIZE 17
+#define SERIAL_TX_BUFFER_SIZE 21
 #define SCIENCE_SYSTEM_ID '5'
 
 // Stepper and servo properties
@@ -53,6 +54,8 @@
 #define LOWER_CAROUSEL_NFAULT PE_0
 #define UPPER_LIMIT_PIN PA_3
 #define LOWER_LIMIT_PIN PA_4
+#define UPPER_LIMIT_PIN PB_4
+#define LOWER_LIMIT_PIN PB_0
 
 // SCOM will accelerate, then keep going for this many seconds,
 // then decelerate to a rest.
@@ -67,7 +70,7 @@
 
 #define PWM_INCREMENT 3
 
-enum ActuationStates{ACCEL_UP, DECEL_UP, CONST_UP, ACCEL_DOWN, DECEL_DOWN, CONST_DOWN, STOPPED, DECEL_UP_FAST, DECEL_DOWN_FAST};
+enum ActuationStates{ACCEL_UP, DECEL_UP, CONST_UP, ACCEL_DOWN, DECEL_DOWN, CONST_DOWN, STOPPED};
 volatile int actuation_state = STOPPED;
 volatile int current_pwm_value = 0;
 volatile int coast_ticks = 0;
@@ -100,7 +103,6 @@ volatile bool connection_lost = false;
 
 void setup() {
   // put your setup code here, to run once: 
-  SerialAPI::init(SCIENCE_SYSTEM_ID, 9600);
 
   // Enable timer for SCOM accel control
   // SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
@@ -123,6 +125,8 @@ void setup() {
 
   pinMode(UPPER_CAROUSEL_NFAULT, INPUT);
   pinMode(LOWER_CAROUSEL_NFAULT, INPUT);
+  pinMode(LOWER_LIMIT_PIN, INPUT);
+  pinMode(UPPER_LIMIT_PIN, INPUT);
 
   pinMode(SCOM_DIR, OUTPUT);
   pinMode(SCOM_PWM, OUTPUT);
@@ -133,10 +137,6 @@ void setup() {
   // WatchdogIntRegister(WATCHDOG0_BASE, &ConnectionLostISR);
   // WatchdogEnable(WATCHDOG0_BASE);
 
-  // // Watchdog timer to reset MCU if serial connection isn't recovered in 10 seconds.
-  // SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG1);
-
-  // // Configure this timer to reset the system on its second interrupt (10 seconds)
   // Watchdog timer to reset MCU if serial connection isn't recovered in 10 seconds.
   // SysCtlPeripheralEnable(SYSCTL_PERIPH_WDOG1);
 
@@ -150,10 +150,18 @@ void setup() {
   // attachInterrupt(LOWER_CAROUSEL_NFAULT, lowerCarouselFaultISR, GPIO_FALLING_EDGE);
 
   setPinAsOpenDrain('B', 6, 1);
+  //setPinAsOpenDrain('B', 6, 1);
+  float temp_stuff[5] = {0.0f};
+  tx_buffer[0] = SCIENCE_SYSTEM_ID;
+  memcpy(tx_buffer+1, &temp_stuff, 20);
+
+  SerialAPI::send_bytes('0', tx_buffer, 21);
 }
 
 void loop() {
 
+  UpperCarousel.enable();
+  LowerCarousel.enable();
   // if(UPPER_CAROUSEL_FAULT || LOWER_CAROUSEL_FAULT){
   //   // What to do in this situation? Any data to send back to main PC?
   // }
@@ -194,16 +202,22 @@ void loop() {
     upper_stepper_increment = ctl_floats[1];
     lower_stepper_increment = ctl_floats[2];
     scom_speed = ctl_floats[3];
+    memcpy(ctl_floats, rx_buffer+1, 20);
+    shutdownState = ctl_floats[0];
+    gripperState = ctl_floats[1];
+    upper_stepper_increment = ctl_floats[2];
+    lower_stepper_increment = ctl_floats[3];
+    scom_speed = ctl_floats[4];
 
-    delay(50);
+    // delay(50);
 
     // Control logic for SCOM is here because it should be able to turn off steppers
     // before anything else gets to them
 
-  //   bool going_up = (actuation_state == ACCEL_UP || actuation_state == CONST_UP);
-  //   bool going_down = (actuation_state == ACCEL_DOWN || actuation_state == CONST_DOWN);
+    // bool going_up = (actuation_state == ACCEL_UP || actuation_state == CONST_UP);
+    // bool going_down = (actuation_state == ACCEL_DOWN || actuation_state == CONST_DOWN);
 
-  //   // Only change actuation state if software sends a different command
+    // Only change actuation state if software sends a different command
   //   if(scom_speed != last_scom_speed){
 
   //     if(scom_speed == 1.0f){
@@ -232,13 +246,9 @@ void loop() {
   //       }else if(actuation_state == STOPPED){
   //         actuation_state = ACCEL_DOWN;
   //       }
-  //     }else if(digitalRead(LOWER_LIMIT_PIN) == HIGH){
-  //       actuation_state = DECEL_DOWN_FAST;
 
-  //     }else if(digitalRead(UPPER_LIMIT_PIN) == HIGH){
-  //       actuation_state = DECEL_UP_FAST;
   //     }else{
-        
+
   //       // Default to a stop if data is garbled
   //       if(going_up) {
   //         actuation_state = DECEL_UP;
@@ -248,6 +258,7 @@ void loop() {
 
   //     }
   // }
+    // scom_speed = last_scom_speed;
     
     // Steppers shouldn't run at the same time as SCOM, if they do,
     // EMF badly fucks things up
@@ -257,6 +268,11 @@ void loop() {
     // }
 
 
+    delay(100);
+    // tx_buffer[0] = SCIENCE_SYSTEM_ID;
+    // memcpy(tx_buffer+1, &rx_buffer, 16);
+    // SerialAPI::send_bytes('0', tx_buffer, 17);
+    // delay(100);
     // Sent for board enumeration, isn't actually used by software
     tx_buffer[0] = SCIENCE_SYSTEM_ID;
     memcpy(tx_buffer+1, &gripperState, 4);
@@ -266,6 +282,14 @@ void loop() {
 
     SerialAPI::send_bytes('0', tx_buffer, 17);
     // delay(100);
+    memcpy(tx_buffer+1, &shutdownState, 4);
+    memcpy(tx_buffer+5, &gripperState, 4);
+    memcpy(tx_buffer+9, &upper_stepper_increment, 4);
+    memcpy(tx_buffer+13, &lower_stepper_increment, 4);
+    memcpy(tx_buffer+17, &scom_speed, 4);
+
+    SerialAPI::send_bytes('0', tx_buffer, 21);
+    delay(100);
   }
 
   if(abs(upper_stepper_increment) > 0.0f){
@@ -284,7 +308,7 @@ void loop() {
       analogWrite(SCOM_PWM,0);
     }
     else{
-      analogWrite(SCOM_PWM, 50);
+      analogWrite(SCOM_PWM, (int) scom_speed*2.55);
     }
   }else{
     digitalWrite(SCOM_DIR, HIGH);
@@ -292,43 +316,47 @@ void loop() {
       analogWrite(SCOM_PWM,0);
     }
     else{
-      analogWrite(SCOM_PWM, 50);
+      analogWrite(SCOM_PWM, (int) scom_speed*2.55);
     }
   }
 
-  scom_speed = last_scom_speed;
 
+  // if(upper_carousel_wiggle){
+  //   for(int i=0; i<UPPER_CAROUSEL_WIGGLE_COUNT; i++){
+  //     UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
+  //     delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
+  //     UpperCarousel.rotate(-2 * UPPER_CAROUSEL_WIGGLE_ANGLE);
+  //     delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
+  //     UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
+  //     delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
+  //   }
+  // }
 
-  if(upper_carousel_wiggle){
-    for(int i=0; i<UPPER_CAROUSEL_WIGGLE_COUNT; i++){
-      UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
-      delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
-      UpperCarousel.rotate(-2 * UPPER_CAROUSEL_WIGGLE_ANGLE);
-      delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
-      UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
-      delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
-    }
-  }
+  // if(lower_carousel_wiggle){
+  //   for(int i=0; i<LOWER_CAROUSEL_WIGGLE_COUNT; i++){
+  //     LowerCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
+  //     delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
+  //     LowerCarousel.rotate(-2 * LOWER_CAROUSEL_WIGGLE_ANGLE);
+  //     delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
+  //     UpperCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
+  //     delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
+  //   }
+  // }
 
-  if(lower_carousel_wiggle){
-    for(int i=0; i<LOWER_CAROUSEL_WIGGLE_COUNT; i++){
-      LowerCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
-      delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
-      LowerCarousel.rotate(-2 * LOWER_CAROUSEL_WIGGLE_ANGLE);
-      delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
-      UpperCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
-      delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
-    }
-  }
+  // if(shutdownState > 0.0f){
+  //   UpperCarousel.disable();
+  //   LowerCarousel.disable();
+  // }else{
+  //   UpperCarousel.enable();
+  //   LowerCarousel.enable();
+  // }
+    // tx_buffer[0] = SCIENCE_SYSTEM_ID;
+    // memcpy(tx_buffer+1, &gripperState, 4);
+    // memcpy(tx_buffer+5, &upper_stepper_increment, 4);
+    // memcpy(tx_buffer+9, &lower_stepper_increment, 4);
+    // memcpy(tx_buffer+13, &scom_speed, 4);
 
-  if(shutdownState > 0.0f){
-    UpperCarousel.disable();
-    LowerCarousel.disable();
-  }else{
-    UpperCarousel.enable();
-    LowerCarousel.enable();
-  }
-
+    // SerialAPI::send_bytes('0', tx_buffer, 17);
   
 }
 
@@ -406,29 +434,6 @@ void AccelISR(){
       delayMicroseconds(500);
       analogWrite(SCOM_PWM, current_pwm_value);
       break;
-    
-    case DECEL_DOWN_FAST:
-      current_pwm_value -= (30 * PWM_INCREMENT);
-      if(current_pwm_value <= 0){
-        current_pwm_value = 0;
-        actuation_state = STOPPED;
-      }
-      digitalWrite(SCOM_DIR, HIGH);
-      delayMicroseconds(500);
-      analogWrite(SCOM_PWM, current_pwm_value);
-      break;
-    
-    case DECEL_UP_FAST:
-      current_pwm_value -= (30 * PWM_INCREMENT);
-      if(current_pwm_value <= 0){
-        current_pwm_value = 0;
-        actuation_state = STOPPED;
-      }
-      digitalWrite(SCOM_DIR, LOW);
-      delayMicroseconds(500);
-      analogWrite(SCOM_PWM, current_pwm_value);
-      break;
-
 
   }
 }
@@ -440,8 +445,8 @@ void ConnectionLostISR(){
 void setPinAsOpenDrain(char port, int pin, int output){
   int pin_idx = pin;
 
-  if(0 > pin || pin > 7){return;}
-  if('A' > port || port > 'F'){return;}
+  if(0 > pin || pin > 7){Serial.println("e");return;}
+  if('A' > port || port > 'F'){Serial.println("e");return;}
   if(!(output == 0 || output == 1)){return;}
 
   // PD4, PD5, PB0 and PB1 are not 5V tolerant
