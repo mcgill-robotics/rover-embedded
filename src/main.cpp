@@ -195,63 +195,63 @@ void loop() {
     lower_stepper_increment = ctl_floats[2];
     scom_speed = ctl_floats[3];
 
-    // delay(50);
+    delay(50);
 
     // Control logic for SCOM is here because it should be able to turn off steppers
     // before anything else gets to them
 
-    // bool going_up = (actuation_state == ACCEL_UP || actuation_state == CONST_UP);
-    // bool going_down = (actuation_state == ACCEL_DOWN || actuation_state == CONST_DOWN);
+    bool going_up = (actuation_state == ACCEL_UP || actuation_state == CONST_UP);
+    bool going_down = (actuation_state == ACCEL_DOWN || actuation_state == CONST_DOWN);
 
     // Only change actuation state if software sends a different command
-  //   if(scom_speed != last_scom_speed){
+    if(scom_speed != last_scom_speed){
 
-  //     if(scom_speed == 1.0f){
+      if(scom_speed == 1.0f){
 
-  //       // Up
-  //       if(going_down) {
-  //         actuation_state = DECEL_DOWN;
-  //       }else if(actuation_state == STOPPED){
-  //         actuation_state = ACCEL_UP;
-  //       }
+        // Up
+        if(going_down) {
+          actuation_state = DECEL_DOWN;
+        }else if(actuation_state == STOPPED){
+          actuation_state = ACCEL_UP;
+        }
 
-  //     }else if(scom_speed == 0.0f){
+      }else if(scom_speed == 0.0f){
 
-  //       // Stop
-  //       if(going_up) {
-  //         actuation_state = DECEL_UP;
-  //       }else if(going_down){
-  //         actuation_state = DECEL_DOWN;
-  //       }
+        // Stop
+        if(going_up) {
+          actuation_state = DECEL_UP;
+        }else if(going_down){
+          actuation_state = DECEL_DOWN;
+        }
 
-  //     }else if(scom_speed == -1.0f){
+      }else if(scom_speed == -1.0f){
         
-  //       // Down
-  //       if(going_up) {
-  //         actuation_state = DECEL_UP;
-  //       }else if(actuation_state == STOPPED){
-  //         actuation_state = ACCEL_DOWN;
-  //       }
+        // Down
+        if(going_up) {
+          actuation_state = DECEL_UP;
+        }else if(actuation_state == STOPPED){
+          actuation_state = ACCEL_DOWN;
+        }
 
-  //     }else{
+      }else{
 
-  //       // Default to a stop if data is garbled
-  //       if(going_up) {
-  //         actuation_state = DECEL_UP;
-  //       }else if(going_down){
-  //         actuation_state = DECEL_DOWN;
-  //       }
+        // Default to a stop if data is garbled
+        if(going_up) {
+          actuation_state = DECEL_UP;
+        }else if(going_down){
+          actuation_state = DECEL_DOWN;
+        }
 
-  //     }
-  // }
-    // scom_speed = last_scom_speed;
+      }
+  }
+    scom_speed = last_scom_speed;
     
     // Steppers shouldn't run at the same time as SCOM, if they do,
     // EMF badly fucks things up
-    // if(actuation_state != STOPPED){
-    //   UpperCarousel.disable();
-    //   LowerCarousel.disable();
-    // }
+    if(actuation_state != STOPPED){
+      UpperCarousel.disable();
+      LowerCarousel.disable();
+    }
 
 
     // Sent for board enumeration, isn't actually used by software
@@ -294,35 +294,35 @@ void loop() {
   }
 
 
-  // if(upper_carousel_wiggle){
-  //   for(int i=0; i<UPPER_CAROUSEL_WIGGLE_COUNT; i++){
-  //     UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
-  //     delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
-  //     UpperCarousel.rotate(-2 * UPPER_CAROUSEL_WIGGLE_ANGLE);
-  //     delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
-  //     UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
-  //     delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
-  //   }
-  // }
+  if(upper_carousel_wiggle){
+    for(int i=0; i<UPPER_CAROUSEL_WIGGLE_COUNT; i++){
+      UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
+      delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
+      UpperCarousel.rotate(-2 * UPPER_CAROUSEL_WIGGLE_ANGLE);
+      delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
+      UpperCarousel.rotate(UPPER_CAROUSEL_WIGGLE_ANGLE);
+      delay(UPPER_CAROUSEL_WIGGLE_DELAY_MS);
+    }
+  }
 
-  // if(lower_carousel_wiggle){
-  //   for(int i=0; i<LOWER_CAROUSEL_WIGGLE_COUNT; i++){
-  //     LowerCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
-  //     delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
-  //     LowerCarousel.rotate(-2 * LOWER_CAROUSEL_WIGGLE_ANGLE);
-  //     delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
-  //     UpperCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
-  //     delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
-  //   }
-  // }
+  if(lower_carousel_wiggle){
+    for(int i=0; i<LOWER_CAROUSEL_WIGGLE_COUNT; i++){
+      LowerCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
+      delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
+      LowerCarousel.rotate(-2 * LOWER_CAROUSEL_WIGGLE_ANGLE);
+      delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
+      UpperCarousel.rotate(LOWER_CAROUSEL_WIGGLE_ANGLE);
+      delay(LOWER_CAROUSEL_WIGGLE_DELAY_MS);
+    }
+  }
 
-  // if(shutdownState > 0.0f){
-  //   UpperCarousel.disable();
-  //   LowerCarousel.disable();
-  // }else{
-  //   UpperCarousel.enable();
-  //   LowerCarousel.enable();
-  // }
+  if(shutdownState > 0.0f){
+    UpperCarousel.disable();
+    LowerCarousel.disable();
+  }else{
+    UpperCarousel.enable();
+    LowerCarousel.enable();
+  }
 
   
 }
