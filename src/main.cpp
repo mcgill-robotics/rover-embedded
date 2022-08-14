@@ -67,7 +67,7 @@
 
 #define PWM_INCREMENT 3
 
-enum ActuationStates{ACCEL_UP, DECEL_UP, CONST_UP, ACCEL_DOWN, DECEL_DOWN, CONST_DOWN, STOPPED};
+enum ActuationStates{ACCEL_UP, DECEL_UP, CONST_UP, ACCEL_DOWN, DECEL_DOWN, CONST_DOWN, STOPPED, DECEL_UP_FAST, DECEL_DOWN_FAST};
 volatile int actuation_state = STOPPED;
 volatile int current_pwm_value = 0;
 volatile int coast_ticks = 0;
@@ -200,8 +200,8 @@ void loop() {
     // Control logic for SCOM is here because it should be able to turn off steppers
     // before anything else gets to them
 
-    bool going_up = (actuation_state == ACCEL_UP || actuation_state == CONST_UP);
-    bool going_down = (actuation_state == ACCEL_DOWN || actuation_state == CONST_DOWN);
+  //   bool going_up = (actuation_state == ACCEL_UP || actuation_state == CONST_UP);
+  //   bool going_down = (actuation_state == ACCEL_DOWN || actuation_state == CONST_DOWN);
 
   //   // Only change actuation state if software sends a different command
   //   if(scom_speed != last_scom_speed){
@@ -232,9 +232,13 @@ void loop() {
   //       }else if(actuation_state == STOPPED){
   //         actuation_state = ACCEL_DOWN;
   //       }
+  //     }else if(digitalRead(LOWER_LIMIT_PIN) == HIGH){
+  //       actuation_state = DECEL_DOWN_FAST;
 
+  //     }else if(digitalRead(UPPER_LIMIT_PIN) == HIGH){
+  //       actuation_state = DECEL_UP_FAST;
   //     }else{
-
+        
   //       // Default to a stop if data is garbled
   //       if(going_up) {
   //         actuation_state = DECEL_UP;
@@ -244,14 +248,14 @@ void loop() {
 
   //     }
   // }
-  //   scom_speed = last_scom_speed;
+    scom_speed = last_scom_speed;
     
-  //   // Steppers shouldn't run at the same time as SCOM, if they do,
-  //   // EMF badly fucks things up
-  //   if(actuation_state != STOPPED){
-  //     UpperCarousel.disable();
-  //     LowerCarousel.disable();
-  //   }
+    // Steppers shouldn't run at the same time as SCOM, if they do,
+    // EMF badly fucks things up
+    if(actuation_state != STOPPED){
+      UpperCarousel.disable();
+      LowerCarousel.disable();
+    }
 
 
     // Sent for board enumeration, isn't actually used by software
@@ -401,6 +405,29 @@ void AccelISR(){
       delayMicroseconds(500);
       analogWrite(SCOM_PWM, current_pwm_value);
       break;
+    
+    case DECEL_DOWN_FAST:
+      current_pwm_value -= (30 * PWM_INCREMENT);
+      if(current_pwm_value <= 0){
+        current_pwm_value = 0;
+        actuation_state = STOPPED;
+      }
+      digitalWrite(SCOM_DIR, HIGH);
+      delayMicroseconds(500);
+      analogWrite(SCOM_PWM, current_pwm_value);
+      break;
+    
+    case DECEL_UP_FAST:
+      current_pwm_value -= (30 * PWM_INCREMENT);
+      if(current_pwm_value <= 0){
+        current_pwm_value = 0;
+        actuation_state = STOPPED;
+      }
+      digitalWrite(SCOM_DIR, LOW);
+      delayMicroseconds(500);
+      analogWrite(SCOM_PWM, current_pwm_value);
+      break;
+
 
   }
 }
