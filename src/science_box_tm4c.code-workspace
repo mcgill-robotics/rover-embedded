@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"name": "science_box_tm4c",
+			"path": "..\\..\\science_box_tm4c"
+		},
+		{
+			"path": "..\\..\\drive board validation"
+		},
+		{
+			"name": "encoder_read_serial_2",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
